@@ -1,0 +1,41 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Пользователи могут читать и обновлять только свои данные
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+      // Администраторы могут читать всех пользователей
+      allow read: if request.auth != null && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    
+    // Задачи доступны всем авторизованным пользователям для чтения
+    match /tasks/{taskId} {
+      allow read: if request.auth != null;
+      // Создание задач только для админов и менеджеров
+      allow create: if request.auth != null && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'manager'];
+      // Обновление задач для админов, менеджеров и исполнителей (только своих задач)
+      allow update: if request.auth != null && (
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'manager'] ||
+        (resource.data.assignee_user_id == request.auth.uid)
+      );
+      // Удаление только для админов
+      allow delete: if request.auth != null && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    
+    // Настройки системы только для админов
+    match /settings/{settingId} {
+      allow read, write: if request.auth != null && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    
+    // Группы доступны всем для чтения
+    match /groups/{groupId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'manager'];
+    }
+  }
+}
