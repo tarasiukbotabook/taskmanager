@@ -8,8 +8,24 @@
     ],
     "rewrites": [
       {
-        "source": "**",
+        "source": "/api/**",
         "function": "api"
+      },
+      {
+        "source": "/auth/**",
+        "function": "api"
+      },
+      {
+        "source": "/login",
+        "function": "api"
+      },
+      {
+        "source": "/logout",
+        "function": "api"
+      },
+      {
+        "source": "/",
+        "destination": "/index.html"
       }
     ]
   },

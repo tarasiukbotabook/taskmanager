@@ -2,13 +2,9 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const session = require('express-session');
-const passport = require('passport');
-const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const TaskBot = require('./bot');
-// Выбираем базу данных в зависимости от переменной окружения
 const database = process.env.USE_FIRESTORE ? './database-firestore' : './database';
-const { getAllTasks, getTaskStats, getDetailedTaskStats, getTaskPerformanceMetrics, completeTask, deleteTask, updateTask, submitForReview, approveTask, requestRevision, returnToWork, getUserRating, addPoints, updateUserRole, getUserRole, getAllUsersWithRoles, setSetting, getSetting, getAllSettings, findOrCreateGoogleUser, findUserByGoogleId } = require(database);
+const { getAllTasks, getTaskStats, completeTask, deleteTask, updateTask, submitForReview, approveTask, requestRevision, returnToWork } = require(database);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -16,83 +12,12 @@ const PORT = process.env.PORT || 3000;
 // Middleware
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname)));
+app.use(express.urlencoded({ extended: true }));
+// Отдаем только определенные статичные файлы без авторизации
+app.use('/public', express.static(path.join(__dirname, 'public')));
+app.use('/node_modules', express.static(path.join(__dirname, 'node_modules')));
 
-// Session configuration
-app.use(session({
-    secret: process.env.SESSION_SECRET || 'task-manager-secret-key-change-in-production',
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-        secure: false, // Set to true in production with HTTPS
-        maxAge: 24 * 60 * 60 * 1000 // 24 hours
-    }
-}));
-
-// Passport configuration
-app.use(passport.initialize());
-app.use(passport.session());
-
-// Google OAuth Strategy
-passport.use(new GoogleStrategy({
-    clientID: process.env.GOOGLE_CLIENT_ID || 'your-google-client-id',
-    clientSecret: process.env.GOOGLE_CLIENT_SECRET || 'your-google-client-secret',
-    callbackURL: process.env.GOOGLE_CALLBACK_URL || 'http://localhost:3000/auth/google/callback'
-}, async (accessToken, refreshToken, profile, done) => {
-    try {
-        const user = await findOrCreateGoogleUser(profile);
-        return done(null, user);
-    } catch (error) {
-        return done(error, null);
-    }
-}));
-
-// Passport serialization
-passport.serializeUser((user, done) => {
-    done(null, user.id);
-});
-
-passport.deserializeUser(async (id, done) => {
-    try {
-        if (process.env.USE_FIRESTORE) {
-            // Для Firestore используем Google ID как document ID
-            const user = await findUserByGoogleId(id);
-            done(null, user);
-        } else {
-            // Для SQLite используем внутренний ID
-            const { db } = require('./database');
-            db.get('SELECT * FROM users WHERE id = ?', [id], (err, user) => {
-                if (err) done(err, null);
-                else done(null, user);
-            });
-        }
-    } catch (error) {
-        done(error, null);
-    }
-});
-
-// Authentication middleware
-function ensureAuthenticated(req, res, next) {
-    if (req.isAuthenticated()) {
-        return next();
-    }
-    res.redirect('/login');
-}
-
-// Role-based middleware
-function requireRole(roles) {
-    return (req, res, next) => {
-        if (!req.isAuthenticated()) {
-            return res.status(401).json({ error: 'Not authenticated' });
-        }
-        
-        if (!roles.includes(req.user.role)) {
-            return res.status(403).json({ error: 'Insufficient permissions' });
-        }
-        
-        next();
-    };
-}
+// Убрана авторизация для упрощения
 
 // Инициализация бота
 let bot;
@@ -131,44 +56,10 @@ if (botToken) {
     console.warn('Bot notifications will not work until token is set.');
 }
 
-// Authentication routes
-app.get('/auth/google',
-    passport.authenticate('google', { scope: ['profile', 'email'] })
-);
+// Убраны все роуты авторизации
 
-app.get('/auth/google/callback',
-    passport.authenticate('google', { failureRedirect: '/login?error=auth_failed' }),
-    (req, res) => {
-        // Successful authentication
-        res.redirect('/');
-    }
-);
-
-app.get('/login', (req, res) => {
-    res.sendFile(path.join(__dirname, 'login.html'));
-});
-
-app.get('/logout', (req, res) => {
-    req.logout((err) => {
-        if (err) {
-            console.error('Logout error:', err);
-        }
-        res.redirect('/login');
-    });
-});
-
-app.get('/api/user', ensureAuthenticated, (req, res) => {
-    res.json({
-        id: req.user.id,
-        email: req.user.email,
-        name: `${req.user.first_name} ${req.user.last_name || ''}`.trim(),
-        avatar: req.user.avatar_url,
-        role: req.user.role
-    });
-});
-
-// API маршруты (защищены аутентификацией)
-app.get('/api/tasks', ensureAuthenticated, async (req, res) => {
+// API маршруты
+app.get('/api/tasks', async (req, res) => {
     try {
         const tasks = await getAllTasks();
         res.json(tasks);
@@ -178,7 +69,7 @@ app.get('/api/tasks', ensureAuthenticated, async (req, res) => {
     }
 });
 
-app.get('/api/stats', ensureAuthenticated, async (req, res) => {
+app.get('/api/stats', async (req, res) => {
     try {
         const stats = await getTaskStats();
         res.json(stats);
@@ -188,7 +79,7 @@ app.get('/api/stats', ensureAuthenticated, async (req, res) => {
     }
 });
 
-app.put('/api/tasks/:id/complete', ensureAuthenticated, async (req, res) => {
+app.put('/api/tasks/:id/complete', async (req, res) => {
     try {
         const taskId = req.params.id;
         const result = await completeTask(taskId);
@@ -529,72 +420,10 @@ app.post('/api/tasks/:id/remind', async (req, res) => {
     }
 });
 
-// API для управления ролями пользователей
-app.get('/api/users/roles', async (req, res) => {
-    try {
-        const users = await getAllUsersWithRoles();
-        res.json(users);
-    } catch (error) {
-        console.error('Error fetching users with roles:', error);
-        res.status(500).json({ error: 'Failed to fetch users' });
-    }
-});
+// Убраны API для управления ролями и настройками
 
-app.put('/api/users/:userId/role', requireRole(['admin']), async (req, res) => {
-    try {
-        const { userId } = req.params;
-        const { role } = req.body;
-        
-        if (!role || !['executor', 'manager', 'admin'].includes(role)) {
-            return res.status(400).json({ error: 'Invalid role' });
-        }
-        
-        const result = await updateUserRole(userId, role);
-        
-        if (result > 0) {
-            res.json({ success: true, message: 'Role updated successfully' });
-        } else {
-            res.status(404).json({ error: 'User not found' });
-        }
-    } catch (error) {
-        console.error('Error updating user role:', error);
-        res.status(500).json({ error: 'Failed to update role' });
-    }
-});
-
-// API для управления настройками
-app.get('/api/settings', async (req, res) => {
-    try {
-        const settings = await getAllSettings();
-        res.json(settings);
-    } catch (error) {
-        console.error('Error fetching settings:', error);
-        res.status(500).json({ error: 'Failed to fetch settings' });
-    }
-});
-
-app.put('/api/settings/:key', async (req, res) => {
-    try {
-        const { key } = req.params;
-        const { value } = req.body;
-        
-        const result = await setSetting(key, value);
-        
-        if (result > 0) {
-            res.json({ success: true, message: 'Setting updated successfully' });
-        } else {
-            res.status(500).json({ error: 'Failed to update setting' });
-        }
-    } catch (error) {
-        console.error('Error updating setting:', error);
-        res.status(500).json({ error: 'Failed to update setting' });
-    }
-});
-
-// Главная страница
-app.get('/', ensureAuthenticated, (req, res) => {
-    res.sendFile(path.join(__dirname, 'task_manager_web.html'));
-});
+// Статичные ресурсы
+app.use('/', express.static(path.join(__dirname, 'public')));
 
 // 404 handler
 app.use('*', (req, res) => {

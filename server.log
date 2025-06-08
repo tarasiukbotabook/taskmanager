@@ -1,9 +1,0 @@
-BOT_TOKEN not provided. Add it in settings to start the bot.
-Bot notifications will not work until token is set.
-Server is running on port 3000
-Web interface: http://localhost:3000
-API endpoints:
-- GET /api/tasks - получить все задачи
-- GET /api/stats - получить статистику
-- PUT /api/tasks/:id/complete - отметить задачу как выполненную
-- DELETE /api/tasks/:id - удалить задачу

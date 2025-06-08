@@ -1,168 +1,34 @@
+const functions = require('firebase-functions');
 const express = require('express');
 const cors = require('cors');
-const path = require('path');
-const session = require('express-session');
-const passport = require('passport');
-const GoogleStrategy = require('passport-google-oauth20').Strategy;
-const functions = require('firebase-functions');
-const jwt = require('jsonwebtoken');
-const TaskBot = require('./bot');
-
-// Firebase configuration
-const config = functions.config();
-
-// Импортируем функции базы данных (Firestore)
-const { getAllTasks, getTaskStats, getDetailedTaskStats, getTaskPerformanceMetrics, completeTask, deleteTask, updateTask, submitForReview, approveTask, requestRevision, returnToWork, getUserRating, addPoints, updateUserRole, getUserRole, getAllUsersWithRoles, setSetting, getSetting, getAllSettings, findOrCreateGoogleUser, findUserByGoogleId } = require('./database-firestore');
-
-// JWT helper functions
-const JWT_SECRET = config.session?.secret || 'fallback-secret-key';
-
-function generateToken(user) {
-    return jwt.sign(
-        { 
-            id: user.id, 
-            email: user.email, 
-            role: user.role 
-        }, 
-        JWT_SECRET, 
-        { expiresIn: '24h' }
-    );
-}
-
-function verifyToken(token) {
-    try {
-        return jwt.verify(token, JWT_SECRET);
-    } catch (error) {
-        return null;
-    }
-}
+const TaskBot = require('../bot');
+const { getAllTasks, getTaskStats, completeTask, deleteTask, updateTask, submitForReview, approveTask, requestRevision, returnToWork } = require('../database-firestore');
 
 const app = express();
 
+// Firebase config
+const config = functions.config() || {};
+
 // Middleware
 app.use(cors({
-    origin: ['https://pro-telegram.web.app', 'http://localhost:3000'],
-    credentials: true // Важно для работы сессий
+    origin: ['https://pro-telegram.web.app', 'https://pro-telegram.firebaseapp.com', 'http://localhost:3000'],
+    credentials: true
 }));
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-// Cookie parser for JWT tokens
+// Логирование всех запросов для отладки
 app.use((req, res, next) => {
-    // Simple cookie parser
-    const cookies = {};
-    if (req.headers.cookie) {
-        req.headers.cookie.split(';').forEach(cookie => {
-            const parts = cookie.split('=');
-            cookies[parts[0].trim()] = parts[1]?.trim();
-        });
-    }
-    req.cookies = cookies;
+    console.log(`📥 ${req.method} ${req.url} - ${new Date().toISOString()}`);
+    console.log('🔧 UPDATED VERSION - Fixed auth issues');
     next();
 });
 
-// Session configuration для Cloud Functions
-app.use(session({
-    secret: config.session?.secret || 'task-manager-secret-key-change-in-production',
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-        secure: false, // Изменяем на false для работы в Firebase Functions
-        httpOnly: true,
-        maxAge: 24 * 60 * 60 * 1000, // 24 hours
-        sameSite: 'lax'
-    }
-}));
-
-// Passport configuration
-app.use(passport.initialize());
-app.use(passport.session());
-
-// Google OAuth Strategy
-passport.use(new GoogleStrategy({
-    clientID: config.google?.client_id || 'placeholder',
-    clientSecret: config.google?.client_secret || 'placeholder',
-    callbackURL: config.google?.callback_url || 'https://pro-telegram.web.app/auth/google/callback'
-}, async (accessToken, refreshToken, profile, done) => {
-    try {
-        const user = await findOrCreateGoogleUser(profile);
-        return done(null, user);
-    } catch (error) {
-        return done(error, null);
-    }
-}));
-
-// Passport serialization
-passport.serializeUser((user, done) => {
-    console.log('Serializing user:', user.id);
-    done(null, user.id);
-});
-
-passport.deserializeUser(async (id, done) => {
-    try {
-        console.log('Deserializing user ID:', id);
-        const user = await findUserByGoogleId(id);
-        console.log('Found user:', user ? 'yes' : 'no');
-        done(null, user);
-    } catch (error) {
-        console.error('Error deserializing user:', error);
-        done(error, null);
-    }
-});
-
-// Authentication middleware using JWT
-function ensureAuthenticated(req, res, next) {
-    console.log('JWT Auth check - path:', req.path);
-    
-    // Проверяем токен в Authorization header
-    const authHeader = req.headers.authorization;
-    let token = null;
-    
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-        token = authHeader.substring(7);
-    } else {
-        // Проверяем токен в cookies
-        token = req.cookies?.auth_token;
-    }
-    
-    console.log('Token present:', !!token);
-    
-    if (token) {
-        const decoded = verifyToken(token);
-        console.log('Token valid:', !!decoded);
-        
-        if (decoded) {
-            req.user = decoded;
-            return next();
-        }
-    }
-    
-    // Если это API запрос, возвращаем JSON
-    if (req.path.startsWith('/api/')) {
-        return res.status(401).json({ error: 'Not authenticated' });
-    }
-    
-    // Иначе перенаправляем на страницу входа
-    res.redirect('/login.html');
-}
-
-// Role-based middleware
-function requireRole(roles) {
-    return (req, res, next) => {
-        if (!req.isAuthenticated()) {
-            return res.status(401).json({ error: 'Not authenticated' });
-        }
-        
-        if (!roles.includes(req.user.role)) {
-            return res.status(403).json({ error: 'Insufficient permissions' });
-        }
-        
-        next();
-    };
-}
+// Убрана авторизация для упрощения
 
 // Инициализация бота
 let bot;
-let botToken = config.telegram?.bot_token;
+let botToken = config.bot?.token;
 
 function initBot(token) {
     if (bot) {
@@ -170,6 +36,7 @@ function initBot(token) {
             console.log('Stopping existing bot instance...');
             bot.bot.stopPolling();
             bot = null;
+            setTimeout(() => {}, 1000);
         } catch (error) {
             console.warn('Error stopping previous bot:', error);
         }
@@ -195,121 +62,10 @@ if (botToken) {
     console.warn('Bot notifications will not work until token is set.');
 }
 
-// Authentication routes
-app.get('/auth/google',
-    passport.authenticate('google', { scope: ['profile', 'email'] })
-);
+// Убраны все роуты авторизации
 
-app.get('/auth/google/callback',
-    passport.authenticate('google', { failureRedirect: '/login.html?error=auth_failed' }),
-    async (req, res) => {
-        try {
-            console.log('OAuth callback - user:', req.user);
-            
-            // Генерируем JWT токен
-            const token = generateToken(req.user);
-            console.log('Generated token for user:', req.user.email);
-            
-            // Устанавливаем токен в cookie
-            res.cookie('auth_token', token, {
-                httpOnly: true,
-                secure: false, // false для Firebase Functions
-                sameSite: 'lax',
-                maxAge: 24 * 60 * 60 * 1000 // 24 часа
-            });
-            
-            console.log('Redirecting to /');
-            res.redirect('/');
-        } catch (error) {
-            console.error('OAuth callback error:', error);
-            res.redirect('/login.html?error=callback_failed');
-        }
-    }
-);
-
-// Главная страница - проверяем авторизацию сразу
-app.get('/', (req, res) => {
-    console.log('Main page request - checking auth');
-    
-    // Проверяем токен
-    const authHeader = req.headers.authorization;
-    let token = null;
-    
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-        token = authHeader.substring(7);
-    } else {
-        token = req.cookies?.auth_token;
-    }
-    
-    console.log('Main page - token present:', !!token);
-    
-    if (token) {
-        const decoded = verifyToken(token);
-        console.log('Main page - token valid:', !!decoded);
-        
-        if (decoded) {
-            // Пользователь авторизован, показываем главную страницу
-            return res.sendFile(path.join(__dirname, '../public/index.html'));
-        }
-    }
-    
-    // Пользователь не авторизован, перенаправляем на логин
-    console.log('Main page - redirecting to login');
-    res.redirect('/login.html');
-});
-
-app.get('/login.html', (req, res) => {
-    console.log('Login page request');
-    res.sendFile(path.join(__dirname, '../public/login.html'));
-});
-
-app.get('/login', (req, res) => {
-    // Перенаправляем на login.html
-    res.redirect('/login.html' + (req.query.error ? `?error=${req.query.error}` : ''));
-});
-
-app.get('/logout', (req, res) => {
-    console.log('Logout request');
-    
-    // Очищаем JWT токен из cookies
-    res.clearCookie('auth_token', {
-        httpOnly: true,
-        secure: false,
-        sameSite: 'lax'
-    });
-    
-    console.log('Redirecting to login after logout');
-    res.redirect('/login.html');
-});
-
-app.get('/api/user', ensureAuthenticated, async (req, res) => {
-    try {
-        console.log('API /user - user from token:', req.user);
-        
-        // Получаем полную информацию о пользователе из базы данных
-        const fullUser = await findUserByGoogleId(req.user.id);
-        
-        if (!fullUser) {
-            console.log('User not found in database:', req.user.id);
-            return res.status(404).json({ error: 'User not found' });
-        }
-        
-        console.log('Returning user info:', fullUser.email);
-        res.json({
-            id: fullUser.id,
-            email: fullUser.email,
-            name: `${fullUser.first_name || ''} ${fullUser.last_name || ''}`.trim(),
-            avatar: fullUser.avatar_url,
-            role: fullUser.role || 'executor'
-        });
-    } catch (error) {
-        console.error('Error in /api/user:', error);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
-// API маршруты (защищены аутентификацией)
-app.get('/api/tasks', ensureAuthenticated, async (req, res) => {
+// API маршруты
+app.get('/api/tasks', async (req, res) => {
     try {
         const tasks = await getAllTasks();
         res.json(tasks);
@@ -319,7 +75,7 @@ app.get('/api/tasks', ensureAuthenticated, async (req, res) => {
     }
 });
 
-app.get('/api/stats', ensureAuthenticated, async (req, res) => {
+app.get('/api/stats', async (req, res) => {
     try {
         const stats = await getTaskStats();
         res.json(stats);
@@ -329,7 +85,7 @@ app.get('/api/stats', ensureAuthenticated, async (req, res) => {
     }
 });
 
-app.put('/api/tasks/:id/complete', ensureAuthenticated, async (req, res) => {
+app.put('/api/tasks/:id/complete', async (req, res) => {
     try {
         const taskId = req.params.id;
         const result = await completeTask(taskId);
@@ -345,7 +101,7 @@ app.put('/api/tasks/:id/complete', ensureAuthenticated, async (req, res) => {
     }
 });
 
-app.put('/api/tasks/:id', ensureAuthenticated, async (req, res) => {
+app.put('/api/tasks/:id', async (req, res) => {
     try {
         const taskId = req.params.id;
         const { title, description, deadline } = req.body;
@@ -367,7 +123,7 @@ app.put('/api/tasks/:id', ensureAuthenticated, async (req, res) => {
     }
 });
 
-app.delete('/api/tasks/:id', ensureAuthenticated, async (req, res) => {
+app.delete('/api/tasks/:id', async (req, res) => {
     try {
         const taskId = req.params.id;
         const result = await deleteTask(taskId);
@@ -383,7 +139,7 @@ app.delete('/api/tasks/:id', ensureAuthenticated, async (req, res) => {
     }
 });
 
-app.put('/api/tasks/:id/submit', ensureAuthenticated, async (req, res) => {
+app.put('/api/tasks/:id/submit', async (req, res) => {
     try {
         const taskId = req.params.id;
         const { userId } = req.body;
@@ -400,7 +156,7 @@ app.put('/api/tasks/:id/submit', ensureAuthenticated, async (req, res) => {
     }
 });
 
-app.put('/api/tasks/:id/approve', ensureAuthenticated, requireRole(['admin', 'manager']), async (req, res) => {
+app.put('/api/tasks/:id/approve', async (req, res) => {
     try {
         const taskId = req.params.id;
         const { reviewerId, comment } = req.body;
@@ -439,12 +195,12 @@ app.put('/api/tasks/:id/approve', ensureAuthenticated, requireRole(['admin', 'ma
     }
 });
 
-app.put('/api/tasks/:id/revision', ensureAuthenticated, requireRole(['admin', 'manager']), async (req, res) => {
+app.put('/api/tasks/:id/revision', async (req, res) => {
     try {
         const taskId = req.params.id;
         const { reviewerId, comment } = req.body;
         
-        // Получаем задачу ПЕРЕД обновлением
+        // Получаем задачу ПЕРЕД обновлением для сохранения chat_id
         const tasks = await getAllTasks();
         const originalTask = tasks.find(t => t.id == taskId);
         
@@ -452,10 +208,12 @@ app.put('/api/tasks/:id/revision', ensureAuthenticated, requireRole(['admin', 'm
             return res.status(404).json({ error: 'Task not found' });
         }
         
+        // Проверяем, что задача может быть отклонена
         if (originalTask.status !== 'review' && originalTask.status !== 'completed') {
-            return res.status(400).json({ error: `Task cannot be rejected. Current status: ${originalTask.status}` });
+            return res.status(400).json({ error: `Task cannot be rejected. Current status: ${originalTask.status}. Only tasks with status 'review' can be rejected.` });
         }
         
+        // Обновляем статус задачи
         const result = await requestRevision(taskId, reviewerId, comment);
         
         if (result > 0) {
@@ -482,9 +240,8 @@ app.put('/api/tasks/:id/revision', ensureAuthenticated, requireRole(['admin', 'm
                     await bot.bot.sendMessage(originalTask.chat_id, rejectionMessage, {
                         reply_markup: keyboard
                     });
-                    console.log(`✅ Rejection notification sent successfully for task ${taskId}`);
                 } catch (telegramError) {
-                    console.error('❌ Error sending rejection notification:', telegramError);
+                    console.error('Error sending rejection notification:', telegramError);
                 }
             }
             
@@ -498,7 +255,7 @@ app.put('/api/tasks/:id/revision', ensureAuthenticated, requireRole(['admin', 'm
     }
 });
 
-app.put('/api/tasks/:id/return', ensureAuthenticated, async (req, res) => {
+app.put('/api/tasks/:id/return', async (req, res) => {
     try {
         const taskId = req.params.id;
         const result = await returnToWork(taskId);
@@ -523,7 +280,7 @@ app.get('/api/bot/status', (req, res) => {
     });
 });
 
-app.post('/api/bot/token', requireRole(['admin']), (req, res) => {
+app.post('/api/bot/token', (req, res) => {
     const { token } = req.body;
     
     if (!token) {
@@ -543,106 +300,31 @@ app.post('/api/bot/token', requireRole(['admin']), (req, res) => {
     }
 });
 
-// API для рейтинга
-app.get('/api/rating', ensureAuthenticated, async (req, res) => {
-    try {
-        const rating = await getUserRating();
-        res.json(rating);
-    } catch (error) {
-        console.error('Error fetching rating:', error);
-        res.status(500).json({ error: 'Failed to fetch rating' });
+app.post('/api/bot/stop', (req, res) => {
+    if (bot) {
+        bot.bot.stopPolling();
+        bot = null;
+        res.json({ success: true, message: 'Bot stopped' });
+    } else {
+        res.json({ success: true, message: 'Bot was not running' });
     }
 });
 
-// API для детальной статистики
-app.get('/api/stats/detailed', ensureAuthenticated, async (req, res) => {
-    try {
-        const detailedStats = await getDetailedTaskStats();
-        res.json(detailedStats);
-    } catch (error) {
-        console.error('Error fetching detailed stats:', error);
-        res.status(500).json({ error: 'Failed to fetch detailed stats' });
-    }
+// Убраны API для рейтинга и детальной статистики
+
+// Убраны API для тестирования и напоминаний
+
+// Убраны API для управления ролями и настройками
+
+// 404 handler
+app.use('*', (req, res) => {
+    res.status(404).json({ error: 'Route not found' });
 });
 
-app.get('/api/stats/performance', ensureAuthenticated, async (req, res) => {
-    try {
-        const performanceMetrics = await getTaskPerformanceMetrics();
-        res.json(performanceMetrics);
-    } catch (error) {
-        console.error('Error fetching performance metrics:', error);
-        res.status(500).json({ error: 'Failed to fetch performance metrics' });
-    }
+// Error handler
+app.use((error, req, res, next) => {
+    console.error('Unhandled error:', error);
+    res.status(500).json({ error: 'Internal server error' });
 });
-
-// API для управления ролями пользователей
-app.get('/api/users/roles', ensureAuthenticated, async (req, res) => {
-    try {
-        const users = await getAllUsersWithRoles();
-        res.json(users);
-    } catch (error) {
-        console.error('Error fetching users with roles:', error);
-        res.status(500).json({ error: 'Failed to fetch users' });
-    }
-});
-
-app.put('/api/users/:userId/role', requireRole(['admin']), async (req, res) => {
-    try {
-        const { userId } = req.params;
-        const { role } = req.body;
-        
-        if (!role || !['executor', 'manager', 'admin'].includes(role)) {
-            return res.status(400).json({ error: 'Invalid role' });
-        }
-        
-        const result = await updateUserRole(userId, role);
-        
-        if (result > 0) {
-            res.json({ success: true, message: 'Role updated successfully' });
-        } else {
-            res.status(404).json({ error: 'User not found' });
-        }
-    } catch (error) {
-        console.error('Error updating user role:', error);
-        res.status(500).json({ error: 'Failed to update role' });
-    }
-});
-
-// API для управления настройками
-app.get('/api/settings', ensureAuthenticated, async (req, res) => {
-    try {
-        const settings = await getAllSettings();
-        res.json(settings);
-    } catch (error) {
-        console.error('Error fetching settings:', error);
-        res.status(500).json({ error: 'Failed to fetch settings' });
-    }
-});
-
-app.put('/api/settings/:key', requireRole(['admin']), async (req, res) => {
-    try {
-        const { key } = req.params;
-        const { value } = req.body;
-        
-        const result = await setSetting(key, value);
-        
-        if (result > 0) {
-            res.json({ success: true, message: 'Setting updated successfully' });
-        } else {
-            res.status(500).json({ error: 'Failed to update setting' });
-        }
-    } catch (error) {
-        console.error('Error updating setting:', error);
-        res.status(500).json({ error: 'Failed to update setting' });
-    }
-});
-
-// Главная страница
-app.get('/', ensureAuthenticated, (req, res) => {
-    res.sendFile(path.join(__dirname, '../public/index.html'));
-});
-
-// Статические файлы
-app.use(express.static(path.join(__dirname, '../public')));
 
 module.exports = app;

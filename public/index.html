@@ -18,6 +18,43 @@
             line-height: 1.6;
         }
 
+        /* Скрываем весь контент до проверки авторизации */
+        .main-content {
+            display: none !important;
+        }
+
+        .main-content.authenticated {
+            display: block !important;
+        }
+
+        /* Показываем loader во время проверки */
+        .auth-loader {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #f8faf9;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+        }
+
+        .loader-spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #e2e8f0;
+            border-top: 4px solid #00796b;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
         /* Боковое меню */
         .sidebar {
             position: fixed;
@@ -648,8 +685,13 @@
         </nav>
     </div>
 
+    <!-- Loader во время проверки авторизации -->
+    <div class="auth-loader" id="authLoader">
+        <div class="loader-spinner"></div>
+    </div>
+
     <!-- Основной контент -->
-    <div class="main-content">
+    <div class="main-content" id="mainContent">
         <!-- Дашборд -->
         <div id="dashboard-page" class="page">
             <div class="header">
@@ -1057,7 +1099,9 @@
                     ...options.headers
                 }
             };
-            return fetch(url, { ...defaultOptions, ...options });
+            // Добавляем префикс /api для Firebase Functions
+            const apiUrl = url.startsWith('/api') ? url : `/api${url}`;
+            return fetch(apiUrl, { ...defaultOptions, ...options });
         }
 
         // API функции
@@ -1090,7 +1134,7 @@
 
         async function completeTaskAPI(taskId) {
             try {
-                const response = await fetch(`/api/tasks/${taskId}/complete`, {
+                const response = await apiCall(`/api/tasks/${taskId}/complete`, {
                     method: 'PUT'
                 });
                 return response.ok;
@@ -1102,7 +1146,7 @@
 
         async function deleteTaskAPI(taskId) {
             try {
-                const response = await fetch(`/api/tasks/${taskId}`, {
+                const response = await apiCall(`/api/tasks/${taskId}`, {
                     method: 'DELETE'
                 });
                 return response.ok;
@@ -1115,7 +1159,7 @@
         // Функции для управления ботом
         async function checkBotStatus() {
             try {
-                const response = await fetch('/api/bot/status');
+                const response = await apiCall('/api/bot/status');
                 if (response.ok) {
                     const status = await response.json();
                     updateBotStatusDisplay(status);
@@ -1147,11 +1191,8 @@
             }
 
             try {
-                const response = await fetch('/api/bot/token', {
+                const response = await apiCall('/api/bot/token', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
                     body: JSON.stringify({ token })
                 });
 
@@ -1176,7 +1217,7 @@
             }
 
             try {
-                const response = await fetch('/api/bot/stop', {
+                const response = await apiCall('/api/bot/stop', {
                     method: 'POST'
                 });
 
@@ -1197,7 +1238,7 @@
         async function testBotNotifications() {
             try {
                 // Получаем chat_id из последней задачи
-                const response = await fetch('/api/tasks');
+                const response = await apiCall('/api/tasks');
                 if (response.ok) {
                     const tasks = await response.json();
                     if (tasks.length === 0) {
@@ -1208,11 +1249,8 @@
                     const chatId = tasks[0].chat_id;
                     console.log(`Testing notifications with chat_id: ${chatId}`);
                     
-                    const testResponse = await fetch('/api/bot/test', {
+                    const testResponse = await apiCall('/api/bot/test', {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
                         body: JSON.stringify({ chatId })
                     });
 
@@ -1497,11 +1535,8 @@
         // Функции для работы с задачами через веб-интерфейс
         async function approveTaskWeb(taskId) {
             try {
-                const response = await fetch(`/api/tasks/${taskId}/approve`, {
+                const response = await apiCall(`/api/tasks/${taskId}/approve`, {
                     method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
                     body: JSON.stringify({ reviewerId: 'web-admin' })
                 });
 
@@ -1526,11 +1561,8 @@
             console.log(`Rejecting task ${taskId} with comment: "${comment}"`);
 
             try {
-                const response = await fetch(`/api/tasks/${taskId}/revision`, {
+                const response = await apiCall(`/api/tasks/${taskId}/revision`, {
                     method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
                     body: JSON.stringify({ reviewerId: 'web-admin', comment })
                 });
 
@@ -1555,7 +1587,7 @@
         // Функция для отправки напоминания
         async function remindTask(taskId) {
             try {
-                const response = await fetch(`/api/tasks/${taskId}/remind`, {
+                const response = await apiCall(`/api/tasks/${taskId}/remind`, {
                     method: 'POST'
                 });
 
@@ -1574,7 +1606,7 @@
         // Функции для работы с рейтингом
         async function loadRating() {
             try {
-                const response = await fetch('/api/rating');
+                const response = await apiCall('/api/rating');
                 if (response.ok) {
                     const rating = await response.json();
                     renderRating(rating);
@@ -1590,8 +1622,8 @@
         async function loadAnalytics() {
             try {
                 const [detailedResponse, performanceResponse] = await Promise.all([
-                    fetch('/api/stats/detailed'),
-                    fetch('/api/stats/performance')
+                    apiCall('/api/stats/detailed'),
+                    apiCall('/api/stats/performance')
                 ]);
 
                 if (detailedResponse.ok) {
@@ -1855,11 +1887,8 @@
             }
 
             try {
-                const response = await fetch(`/api/tasks/${taskId}`, {
+                const response = await apiCall(`/api/tasks/${taskId}`, {
                     method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
                     body: JSON.stringify({ title, description, deadline })
                 });
 
@@ -1899,15 +1928,23 @@
                 if (response.ok) {
                     const user = await response.json();
                     displayUserInfo(user);
+                    // Скрываем loader и показываем основной контент
+                    document.getElementById('authLoader').style.display = 'none';
+                    document.getElementById('mainContent').classList.add('authenticated');
+                    return true;
                 } else if (response.status === 401) {
                     // Не авторизован, перенаправляем на логин
-                    window.location.href = '/login.html';
+                    window.location.href = '/login';
+                    return false;
                 } else {
                     console.error('Failed to load user info');
+                    window.location.href = '/login';
+                    return false;
                 }
             } catch (error) {
                 console.error('Error loading user info:', error);
                 window.location.href = '/login';
+                return false;
             }
         }
 
@@ -1935,14 +1972,14 @@
 
         function logout() {
             if (confirm('Вы уверены, что хотите выйти?')) {
-                window.location.href = '/logout';
+                window.location.href = '/api/logout';
             }
         }
 
         // Функции для управления пользователями
         async function loadUsers() {
             try {
-                const response = await fetch('/api/users/roles');
+                const response = await apiCall('/api/users/roles');
                 if (response.ok) {
                     const users = await response.json();
                     renderUsers(users);
@@ -2000,11 +2037,8 @@
 
         async function updateUserRole(userId, role) {
             try {
-                const response = await fetch(`/api/users/${userId}/role`, {
+                const response = await apiCall(`/api/users/${userId}/role`, {
                     method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
                     body: JSON.stringify({ role })
                 });
 
@@ -2023,7 +2057,7 @@
         // Функции для работы с настройками
         async function loadSettings() {
             try {
-                const response = await fetch('/api/settings');
+                const response = await apiCall('/api/settings');
                 if (response.ok) {
                     const settings = await response.json();
                     applySettings(settings);
@@ -2049,11 +2083,8 @@
             }
 
             try {
-                const response = await fetch('/api/settings/work_chat_id', {
+                const response = await apiCall('/api/settings/work_chat_id', {
                     method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
                     body: JSON.stringify({ value: chatId })
                 });
 
@@ -2070,25 +2101,27 @@
 
         // Инициализация
         async function initApp() {
-            await loadUserInfo();
-            updateAssigneeSelect();
-            await loadDashboard();
-            
-            // Обработчики для управления ботом
-            document.getElementById('saveBotToken').addEventListener('click', saveBotToken);
-            document.getElementById('stopBot').addEventListener('click', stopBot);
-            document.getElementById('testBot').addEventListener('click', testBotNotifications);
-            document.getElementById('refreshBotStatus').addEventListener('click', checkBotStatus);
-            document.getElementById('saveWorkChatId').addEventListener('click', saveWorkChatId);
-            
-            // Автоматическое обновление каждые 30 секунд
-            setInterval(async () => {
-                if (document.querySelector('.nav-item.active').textContent.includes('Дашборд')) {
-                    await fetchTasks();
-                    updateStats();
-                    renderTasks();
-                }
-            }, 30000);
+            const isAuthenticated = await loadUserInfo();
+            if (isAuthenticated) {
+                updateAssigneeSelect();
+                await loadDashboard();
+                
+                // Обработчики для управления ботом
+                document.getElementById('saveBotToken').addEventListener('click', saveBotToken);
+                document.getElementById('stopBot').addEventListener('click', stopBot);
+                document.getElementById('testBot').addEventListener('click', testBotNotifications);
+                document.getElementById('refreshBotStatus').addEventListener('click', checkBotStatus);
+                document.getElementById('saveWorkChatId').addEventListener('click', saveWorkChatId);
+                
+                // Автоматическое обновление каждые 30 секунд
+                setInterval(async () => {
+                    if (document.querySelector('.nav-item.active').textContent.includes('Дашборд')) {
+                        await fetchTasks();
+                        updateStats();
+                        renderTasks();
+                    }
+                }, 30000);
+            }
         }
 
         // Запуск приложения
