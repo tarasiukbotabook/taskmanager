@@ -91,20 +91,220 @@ const server = http.createServer((req, res) => {
                 port: PORT,
                 uptime: process.uptime()
             }));
-        } else if (pathname === '/api/tasks') {
-            // Заглушка для задач
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify([
-                { id: 1, title: 'Тестовая задача', status: 'pending', assignee: 'test_user' }
-            ]));
+        } else if (pathname === '/api/tasks' && req.method === 'GET') {
+            // API для получения всех задач
+            (async () => {
+                try {
+                    const tasks = await db.getAllTasks();
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify(tasks || []));
+                } catch (error) {
+                    console.error('Tasks API error:', error);
+                    res.writeHead(500, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'Failed to fetch tasks' }));
+                }
+            })();
+        } else if (pathname === '/api/tasks' && req.method === 'POST') {
+            // API для создания задачи
+            let body = '';
+            req.on('data', chunk => {
+                body += chunk.toString();
+            });
+            
+            req.on('end', async () => {
+                try {
+                    const taskData = JSON.parse(body);
+                    const { title, description, assignee, deadline, estimatedTime } = taskData;
+                    
+                    if (!title || !assignee) {
+                        res.writeHead(400, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ error: 'Title and assignee are required' }));
+                        return;
+                    }
+                    
+                    // Создаем задачу через базу данных
+                    const taskId = await db.addTask(
+                        title,
+                        description || '',
+                        assignee,
+                        deadline || null,
+                        'web', // chatId для веб-интерфейса
+                        'web_admin', // createdByUserId для веб-интерфейса
+                        estimatedTime || 0
+                    );
+                    
+                    res.writeHead(201, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ 
+                        success: true, 
+                        taskId: taskId,
+                        message: 'Task created successfully' 
+                    }));
+                } catch (error) {
+                    console.error('Task creation error:', error);
+                    if (error.message.includes('JSON')) {
+                        res.writeHead(400, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ error: 'Invalid JSON data' }));
+                    } else {
+                        res.writeHead(500, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ error: 'Failed to create task' }));
+                    }
+                }
+            });
+            return;
+        } else if (pathname.startsWith('/api/tasks/') && req.method === 'PUT') {
+            // API для обновления задачи
+            const taskId = pathname.split('/api/tasks/')[1];
+            
+            let body = '';
+            req.on('data', chunk => {
+                body += chunk.toString();
+            });
+            
+            req.on('end', async () => {
+                try {
+                    const updateData = JSON.parse(body);
+                    const { title, description, deadline, status } = updateData;
+                    
+                    if (status) {
+                        // Обновление статуса
+                        let result;
+                        switch (status) {
+                            case 'completed':
+                                result = await db.completeTask(taskId);
+                                break;
+                            case 'review':
+                                result = await db.submitForReview(taskId, 'web_user');
+                                break;
+                            case 'pending':
+                                result = await db.returnToWork(taskId);
+                                break;
+                            default:
+                                throw new Error('Invalid status');
+                        }
+                        
+                        if (result > 0) {
+                            res.writeHead(200, { 'Content-Type': 'application/json' });
+                            res.end(JSON.stringify({ success: true, message: 'Task status updated' }));
+                        } else {
+                            res.writeHead(404, { 'Content-Type': 'application/json' });
+                            res.end(JSON.stringify({ error: 'Task not found' }));
+                        }
+                    } else {
+                        // Обновление данных задачи
+                        const result = await db.updateTask(taskId, title, description, deadline);
+                        
+                        if (result > 0) {
+                            res.writeHead(200, { 'Content-Type': 'application/json' });
+                            res.end(JSON.stringify({ success: true, message: 'Task updated' }));
+                        } else {
+                            res.writeHead(404, { 'Content-Type': 'application/json' });
+                            res.end(JSON.stringify({ error: 'Task not found' }));
+                        }
+                    }
+                } catch (error) {
+                    console.error('Task update error:', error);
+                    res.writeHead(500, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'Failed to update task' }));
+                }
+            });
+            return;
+        } else if (pathname.startsWith('/api/tasks/') && req.method === 'DELETE') {
+            // API для удаления задачи
+            const taskId = pathname.split('/api/tasks/')[1];
+            
+            (async () => {
+                try {
+                    const result = await db.deleteTask(taskId);
+                    
+                    if (result > 0) {
+                        res.writeHead(200, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ success: true, message: 'Task deleted' }));
+                    } else {
+                        res.writeHead(404, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ error: 'Task not found' }));
+                    }
+                } catch (error) {
+                    console.error('Task deletion error:', error);
+                    res.writeHead(500, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'Failed to delete task' }));
+                }
+            })();
         } else if (pathname === '/api/stats') {
-            // Заглушка для статистики
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({
-                total: 1,
-                completed: 0,
-                pending: 1
-            }));
+            // API для получения статистики задач
+            (async () => {
+                try {
+                    const stats = await db.getTaskStats();
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify(stats || { total: 0, completed: 0, pending: 0, in_progress: 0, review: 0 }));
+                } catch (error) {
+                    console.error('Stats API error:', error);
+                    res.writeHead(500, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'Failed to fetch stats' }));
+                }
+            })();
+        } else if (pathname.startsWith('/api/tasks/') && pathname.endsWith('/approve') && req.method === 'POST') {
+            // API для одобрения задачи
+            const taskId = pathname.split('/api/tasks/')[1].split('/approve')[0];
+            
+            let body = '';
+            req.on('data', chunk => {
+                body += chunk.toString();
+            });
+            
+            req.on('end', async () => {
+                try {
+                    const { comment } = JSON.parse(body);
+                    const result = await db.approveTask(taskId, 'web_admin', comment || '');
+                    
+                    if (result > 0) {
+                        res.writeHead(200, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ success: true, message: 'Task approved' }));
+                    } else {
+                        res.writeHead(404, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ error: 'Task not found' }));
+                    }
+                } catch (error) {
+                    console.error('Task approval error:', error);
+                    res.writeHead(500, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'Failed to approve task' }));
+                }
+            });
+            return;
+        } else if (pathname.startsWith('/api/tasks/') && pathname.endsWith('/reject') && req.method === 'POST') {
+            // API для отклонения задачи
+            const taskId = pathname.split('/api/tasks/')[1].split('/reject')[0];
+            
+            let body = '';
+            req.on('data', chunk => {
+                body += chunk.toString();
+            });
+            
+            req.on('end', async () => {
+                try {
+                    const { comment } = JSON.parse(body);
+                    
+                    if (!comment) {
+                        res.writeHead(400, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ error: 'Comment is required for rejection' }));
+                        return;
+                    }
+                    
+                    const result = await db.requestRevision(taskId, 'web_admin', comment);
+                    
+                    if (result > 0) {
+                        res.writeHead(200, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ success: true, message: 'Task rejected for revision' }));
+                    } else {
+                        res.writeHead(404, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ error: 'Task not found' }));
+                    }
+                } catch (error) {
+                    console.error('Task rejection error:', error);
+                    res.writeHead(500, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'Failed to reject task' }));
+                }
+            });
+            return;
         } else if (pathname === '/api/telegram/start-polling' && req.method === 'POST') {
             // API для запуска polling бота
             (async () => {
@@ -748,11 +948,16 @@ async function pollTelegramUpdates(botToken, db) {
             res.on('end', async () => {
                 try {
                     const response = JSON.parse(data);
-                    if (response.ok && response.result.length > 0) {
-                        for (const update of response.result) {
-                            await handleUpdate(update, botToken, db);
-                            lastUpdateId = update.update_id;
+                    if (response.ok) {
+                        if (response.result.length > 0) {
+                            console.log(`📬 Received ${response.result.length} updates`);
+                            for (const update of response.result) {
+                                await handleUpdate(update, botToken, db);
+                                lastUpdateId = update.update_id;
+                            }
                         }
+                    } else {
+                        console.error('❌ Telegram API error:', response);
                     }
                     resolve();
                 } catch (error) {
@@ -769,13 +974,35 @@ async function pollTelegramUpdates(botToken, db) {
 
 // Обработка обновления
 async function handleUpdate(update, botToken, db) {
+    console.log('📨 Received update:', JSON.stringify(update, null, 2));
+    
     if (update.message && update.message.text) {
         const message = update.message;
+        console.log(`💬 Message from ${message.from.first_name} in chat ${message.chat.id}: ${message.text}`);
         
         // Обрабатываем команду /start
         if (message.text === '/start') {
+            console.log('🚀 Handling /start command');
             await handleStartCommand(message, botToken, db);
         }
+        // Обрабатываем команду /task
+        else if (message.text.startsWith('/task ')) {
+            console.log('📋 Handling /task command');
+            await handleTaskCommand(message, botToken, db);
+        }
+        // Обрабатываем команду /tasks
+        else if (message.text === '/tasks') {
+            console.log('📝 Handling /tasks command');
+            await handleTasksCommand(message, botToken, db);
+        }
+        else {
+            console.log(`❓ Unknown command: ${message.text}`);
+        }
+    } else if (update.callback_query) {
+        console.log('🔘 Handling callback query');
+        await handleCallbackQuery(update.callback_query, botToken, db);
+    } else {
+        console.log('🔍 Update does not contain text message or callback query');
     }
 }
 
@@ -821,6 +1048,450 @@ async function handleStartCommand(message, botToken, db) {
     }
 }
 
+// Обработка callback queries (кнопок)
+async function handleCallbackQuery(callbackQuery, botToken, db) {
+    try {
+        const action = callbackQuery.data;
+        const chatId = callbackQuery.message.chat.id;
+        const userId = callbackQuery.from.id.toString();
+        const messageId = callbackQuery.message.message_id;
+        
+        console.log(`🔘 Callback: ${action} from user ${userId} in chat ${chatId}`);
+        
+        if (action.startsWith('submit_')) {
+            const taskId = action.split('submit_')[1];
+            await handleSubmitTask(callbackQuery, taskId, botToken, db);
+        } else if (action.startsWith('approve_')) {
+            const taskId = action.split('approve_')[1];
+            await handleApproveTask(callbackQuery, taskId, botToken, db);
+        } else if (action.startsWith('reject_')) {
+            const taskId = action.split('reject_')[1];
+            await handleRejectTask(callbackQuery, taskId, botToken, db);
+        } else {
+            console.log(`❓ Unknown callback action: ${action}`);
+            await answerCallbackQuery(botToken, callbackQuery.id, '❌ Неизвестное действие');
+        }
+    } catch (error) {
+        console.error('Error handling callback query:', error);
+        await answerCallbackQuery(botToken, callbackQuery.id, '❌ Произошла ошибка');
+    }
+}
+
+// Обработка сдачи задачи на проверку
+async function handleSubmitTask(callbackQuery, taskId, botToken, db) {
+    try {
+        const userId = callbackQuery.from.id.toString();
+        const chatId = callbackQuery.message.chat.id;
+        const messageId = callbackQuery.message.message_id;
+        
+        // Проверяем, что пользователь является исполнителем задачи
+        const tasks = await db.getAllTasks({ chatId: chatId.toString() });
+        const task = tasks.find(t => t.id == taskId);
+        
+        if (!task) {
+            await answerCallbackQuery(botToken, callbackQuery.id, '❌ Задача не найдена');
+            return;
+        }
+        
+        // Проверяем, является ли пользователь исполнителем
+        const users = await db.getAllUsersWithRoles();
+        const currentUser = users.find(u => u.user_id === userId);
+        const assigneeUsername = task.assignee_username.replace('@', '').toLowerCase();
+        const currentUsername = currentUser?.username?.toLowerCase();
+        
+        if (!currentUser || currentUsername !== assigneeUsername) {
+            await answerCallbackQuery(botToken, callbackQuery.id, '❌ Только исполнитель может сдать задачу на проверку');
+            return;
+        }
+        
+        // Обновляем статус задачи
+        await db.submitForReview(taskId, userId);
+        
+        // Обновляем сообщение
+        const newText = callbackQuery.message.text.replace('📋 Задача:', '🔍 Задача на проверке:');
+        
+        // Создаем новые кнопки для администраторов
+        const keyboard = {
+            inline_keyboard: [
+                [
+                    { text: '✅ Принять', callback_data: `approve_${taskId}` },
+                    { text: '❌ На доработку', callback_data: `reject_${taskId}` }
+                ]
+            ]
+        };
+        
+        await editMessage(botToken, chatId, messageId, newText, keyboard);
+        await answerCallbackQuery(botToken, callbackQuery.id, '📤 Задача отправлена на проверку');
+        
+    } catch (error) {
+        console.error('Error handling submit task:', error);
+        await answerCallbackQuery(botToken, callbackQuery.id, '❌ Ошибка при отправке на проверку');
+    }
+}
+
+// Обработка принятия задачи
+async function handleApproveTask(callbackQuery, taskId, botToken, db) {
+    try {
+        const userId = callbackQuery.from.id.toString();
+        const chatId = callbackQuery.message.chat.id;
+        const messageId = callbackQuery.message.message_id;
+        
+        // Проверяем права пользователя
+        const users = await db.getAllUsersWithRoles();
+        const currentUser = users.find(u => u.user_id === userId);
+        
+        // Получаем задачу для проверки создателя
+        const tasks = await db.getAllTasks({ chatId: chatId.toString() });
+        const task = tasks.find(t => t.id == taskId);
+        
+        if (!currentUser || !task) {
+            await answerCallbackQuery(botToken, callbackQuery.id, '❌ Задача не найдена или пользователь не найден');
+            return;
+        }
+        
+        // Разрешаем принимать задачи: админам, менеджерам и создателям задач
+        const canApprove = currentUser.role === 'admin' || 
+                          currentUser.role === 'manager' || 
+                          task.created_by_user_id === userId;
+        
+        if (!canApprove) {
+            await answerCallbackQuery(botToken, callbackQuery.id, '❌ Недостаточно прав для принятия задач');
+            return;
+        }
+        
+        // Обновляем статус задачи
+        await db.approveTask(taskId, userId, '');
+        
+        // Обновляем сообщение
+        const newText = callbackQuery.message.text.replace(/🔍 Задача на проверке:|📋 Задача:/, '✅ Задача выполнена:');
+        
+        await editMessage(botToken, chatId, messageId, newText, null);
+        await answerCallbackQuery(botToken, callbackQuery.id, '✅ Задача принята!');
+        
+    } catch (error) {
+        console.error('Error handling approve task:', error);
+        await answerCallbackQuery(botToken, callbackQuery.id, '❌ Ошибка при принятии задачи');
+    }
+}
+
+// Обработка отклонения задачи
+async function handleRejectTask(callbackQuery, taskId, botToken, db) {
+    try {
+        const userId = callbackQuery.from.id.toString();
+        const chatId = callbackQuery.message.chat.id;
+        const messageId = callbackQuery.message.message_id;
+        
+        // Проверяем права пользователя
+        const users = await db.getAllUsersWithRoles();
+        const currentUser = users.find(u => u.user_id === userId);
+        
+        if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'manager')) {
+            await answerCallbackQuery(botToken, callbackQuery.id, '❌ Недостаточно прав для отклонения задач');
+            return;
+        }
+        
+        // Запрашиваем комментарий
+        await answerCallbackQuery(botToken, callbackQuery.id, '💬 Напишите комментарий для доработки...');
+        
+        // Отправляем сообщение с просьбой написать комментарий
+        await sendMessage(botToken, chatId, `❌ Задача #${taskId} отклонена на доработку.
+
+👤 ${currentUser.first_name || 'Администратор'}, ответьте на это сообщение с комментарием о том, что нужно исправить.`);
+        
+        // Сохраняем информацию для обработки следующего сообщения
+        // Это упрощенный подход - в продакшене лучше использовать состояния
+        
+    } catch (error) {
+        console.error('Error handling reject task:', error);
+        await answerCallbackQuery(botToken, callbackQuery.id, '❌ Ошибка при отклонении задачи');
+    }
+}
+
+// Ответ на callback query
+async function answerCallbackQuery(botToken, callbackQueryId, text) {
+    const https = require('https');
+    const postData = JSON.stringify({
+        callback_query_id: callbackQueryId,
+        text: text
+    });
+    
+    const options = {
+        hostname: 'api.telegram.org',
+        path: `/bot${botToken}/answerCallbackQuery`,
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(postData)
+        }
+    };
+    
+    return new Promise((resolve) => {
+        const req = https.request(options, (res) => {
+            resolve();
+        });
+        req.on('error', () => resolve());
+        req.write(postData);
+        req.end();
+    });
+}
+
+// Редактирование сообщения
+async function editMessage(botToken, chatId, messageId, text, replyMarkup = null) {
+    const https = require('https');
+    const postData = JSON.stringify({
+        chat_id: chatId,
+        message_id: messageId,
+        text: text,
+        reply_markup: replyMarkup
+    });
+    
+    const options = {
+        hostname: 'api.telegram.org',
+        path: `/bot${botToken}/editMessageText`,
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(postData)
+        }
+    };
+    
+    return new Promise((resolve) => {
+        const req = https.request(options, (res) => {
+            resolve();
+        });
+        req.on('error', () => resolve());
+        req.write(postData);
+        req.end();
+    });
+}
+
+// Обработка команды /task
+async function handleTaskCommand(message, botToken, db) {
+    try {
+        const chatId = message.chat.id.toString();
+        const userId = message.from.id.toString();
+        
+        // Проверяем, что это рабочий чат
+        const workChatId = await db.getSetting('work_chat_id');
+        if (!workChatId || workChatId !== chatId) {
+            await sendMessage(botToken, chatId, '❌ Команды задач доступны только в рабочем чате.');
+            return;
+        }
+        
+        // Парсим команду
+        const taskText = message.text.substring(6); // Убираем "/task "
+        const parsed = parseTaskCommand(taskText);
+        
+        if (!parsed.title || !parsed.assignee) {
+            await sendMessage(botToken, chatId, `❌ Неверный формат команды
+
+Правильный формат:
+/task Заголовок @username описание дедлайн
+
+Пример:
+/task Создать дизайн @anna_designer Разработать макет главной страницы 2025-06-15`);
+            return;
+        }
+        
+        // Проверяем, что исполнитель существует в системе
+        const users = await db.getAllUsersWithRoles();
+        const assigneeUsername = parsed.assignee.replace('@', '').toLowerCase();
+        const assigneeUser = users.find(u => 
+            u.username && u.username.toLowerCase() === assigneeUsername
+        );
+        
+        if (!assigneeUser) {
+            await sendMessage(botToken, chatId, `❌ Пользователь ${parsed.assignee} не найден в системе. 
+            
+Пользователь должен сначала написать /start боту для регистрации.`);
+            return;
+        }
+        
+        // Создаем задачу
+        const taskId = await db.addTask(
+            parsed.title,
+            parsed.description,
+            parsed.assignee,
+            parsed.deadline,
+            chatId,
+            userId
+        );
+        
+        // Формируем ответ
+        const creatorName = message.from.first_name + (message.from.last_name ? ` ${message.from.last_name}` : '');
+        let deadlineText = '';
+        if (parsed.deadline) {
+            deadlineText = `📅 Дедлайн: ${parsed.deadline}`;
+        }
+        
+        const response = `✅ Задача создана!
+
+📋 Задача: ${parsed.title}
+👤 Исполнитель: ${parsed.assignee}
+👨‍💼 Создал: ${creatorName}
+${parsed.description ? `📝 Описание: ${parsed.description}` : ''}
+${deadlineText}
+
+ID задачи: #${taskId}`;
+
+        await sendMessageWithButtons(botToken, chatId, response, taskId, parsed.assignee);
+        
+        // Отправляем уведомление исполнителю
+        if (assigneeUser.user_id) {
+            const notificationText = `📋 Вам назначена новая задача!
+
+Задача: ${parsed.title}
+Создатель: ${creatorName}
+${parsed.description ? `Описание: ${parsed.description}` : ''}
+${deadlineText}
+
+ID: #${taskId}`;
+            
+            await sendMessage(botToken, assigneeUser.user_id, notificationText);
+        }
+        
+    } catch (error) {
+        console.error('Error handling /task command:', error);
+        await sendMessage(botToken, message.chat.id, '❌ Произошла ошибка при создании задачи.');
+    }
+}
+
+// Обработка команды /tasks
+async function handleTasksCommand(message, botToken, db) {
+    try {
+        const chatId = message.chat.id.toString();
+        
+        // Проверяем, что это рабочий чат
+        const workChatId = await db.getSetting('work_chat_id');
+        if (!workChatId || workChatId !== chatId) {
+            await sendMessage(botToken, chatId, '❌ Команды задач доступны только в рабочем чате.');
+            return;
+        }
+        
+        const tasks = await db.getAllTasks({ chatId });
+
+        if (tasks.length === 0) {
+            await sendMessage(botToken, chatId, `📝 Список задач пуст
+
+Создайте новую задачу командой:
+/task Заголовок @username описание дедлайн`);
+            return;
+        }
+
+        let response = '📋 Список задач:\n\n';
+        
+        const pendingTasks = tasks.filter(t => t.status === 'pending');
+        const inProgressTasks = tasks.filter(t => t.status === 'in_progress');
+        const reviewTasks = tasks.filter(t => t.status === 'review');
+        const revisionTasks = tasks.filter(t => t.status === 'revision');
+        const completedTasks = tasks.filter(t => t.status === 'completed');
+
+        if (pendingTasks.length > 0) {
+            response += '⏳ Ожидают выполнения:\n';
+            pendingTasks.forEach(task => {
+                let deadlineText = '';
+                if (task.deadline) {
+                    const isOverdue = new Date(task.deadline) < new Date();
+                    deadlineText = isOverdue ? ` ⚠️ (просрочено)` : ` (до ${task.deadline})`;
+                }
+                response += `#${task.id} ${task.title} → ${task.assignee_username}${deadlineText}\n`;
+            });
+            response += '\n';
+        }
+
+        if (inProgressTasks.length > 0) {
+            response += '🔄 В работе:\n';
+            inProgressTasks.forEach(task => {
+                let deadlineText = '';
+                if (task.deadline) {
+                    const isOverdue = new Date(task.deadline) < new Date();
+                    deadlineText = isOverdue ? ` ⚠️ (просрочено)` : ` (до ${task.deadline})`;
+                }
+                response += `#${task.id} ${task.title} → ${task.assignee_username}${deadlineText}\n`;
+            });
+            response += '\n';
+        }
+
+        if (reviewTasks.length > 0) {
+            response += '🔍 На проверке:\n';
+            reviewTasks.forEach(task => {
+                response += `#${task.id} ${task.title} → ${task.assignee_username}\n`;
+            });
+            response += '\n';
+        }
+
+        if (revisionTasks.length > 0) {
+            response += '🔄 На доработке:\n';
+            revisionTasks.forEach(task => {
+                const comment = task.review_comment ? ` (${task.review_comment})` : '';
+                response += `#${task.id} ${task.title} → ${task.assignee_username}${comment}\n`;
+            });
+            response += '\n';
+        }
+
+        if (completedTasks.length > 0) {
+            response += '✅ Выполнено:\n';
+            completedTasks.slice(0, 5).forEach(task => {
+                response += `#${task.id} ${task.title} → ${task.assignee_username}\n`;
+            });
+            if (completedTasks.length > 5) {
+                response += `... и еще ${completedTasks.length - 5} задач\n`;
+            }
+        }
+
+        await sendMessage(botToken, chatId, response);
+        
+    } catch (error) {
+        console.error('Error handling /tasks command:', error);
+        await sendMessage(botToken, message.chat.id, '❌ Произошла ошибка при получении списка задач.');
+    }
+}
+
+// Парсер команды /task 
+function parseTaskCommand(text) {
+    // Формат: /task Заголовок @username описание дедлайн
+    const parts = text.trim().split(' ');
+    let title = '';
+    let assignee = '';
+    let description = '';
+    let deadline = '';
+    
+    let currentPart = 'title';
+    
+    for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
+        
+        if (part.startsWith('@')) {
+            // Найден исполнитель - переключаемся на описание
+            assignee = part;
+            currentPart = 'description';
+        } else if (part.match(/^\d{4}-\d{2}-\d{2}$/)) {
+            // Найдена дата - это дедлайн
+            deadline = part;
+            // Проверяем следующую часть на время
+            if (i + 1 < parts.length && parts[i + 1].match(/^\d{1,2}:\d{2}$/)) {
+                deadline += ' ' + parts[i + 1];
+                i++; // Пропускаем время в следующей итерации
+            }
+            currentPart = 'done';
+        } else {
+            // Добавляем к текущей части
+            if (currentPart === 'title') {
+                title += (title ? ' ' : '') + part;
+            } else if (currentPart === 'description') {
+                description += (description ? ' ' : '') + part;
+            }
+        }
+    }
+    
+    return {
+        title: title.trim(),
+        assignee: assignee,
+        description: description.trim(),
+        deadline: deadline
+    };
+}
+
 // Проверка членства в чате
 async function checkChatMembership(userId, chatId, botToken) {
     const https = require('https');
@@ -854,6 +1525,45 @@ async function sendMessage(botToken, chatId, text) {
     const postData = JSON.stringify({
         chat_id: chatId,
         text: text
+    });
+    
+    const options = {
+        hostname: 'api.telegram.org',
+        path: `/bot${botToken}/sendMessage`,
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(postData)
+        }
+    };
+    
+    return new Promise((resolve) => {
+        const req = https.request(options, (res) => {
+            resolve();
+        });
+        req.on('error', () => resolve());
+        req.write(postData);
+        req.end();
+    });
+}
+
+// Отправка сообщения с кнопками
+async function sendMessageWithButtons(botToken, chatId, text, taskId, assigneeUsername) {
+    const https = require('https');
+    
+    // Создаем клавиатуру с кнопками для управления задачей
+    const keyboard = {
+        inline_keyboard: [
+            [
+                { text: '📤 Сдать на проверку', callback_data: `submit_${taskId}` }
+            ]
+        ]
+    };
+    
+    const postData = JSON.stringify({
+        chat_id: chatId,
+        text: text,
+        reply_markup: keyboard
     });
     
     const options = {

@@ -239,7 +239,8 @@ const UsersModule = {
         container.innerHTML = `
             <div class="users-header">
                 <div class="users-summary">
-                    <p class="text-light">Найдено ${this.users.length} зарегистрированных участников чата "${this.chatInfo?.chat?.title || 'Telegram'}"</p>
+                    <h2>Пользователи</h2>
+                    <p>Найдено ${this.users.length} зарегистрированных участников чата "${this.chatInfo?.chat?.title || 'Telegram'}"</p>
                 </div>
                 
                 <div class="bot-controls">
@@ -248,7 +249,7 @@ const UsersModule = {
                     </div>
                     <div class="action-buttons">
                         <button class="btn btn-primary btn-sm" onclick="UsersModule.refreshUsers()">
-                            <span>🔄</span> Обновить список
+                            <span>🔄</span> Обновить
                         </button>
                     </div>
                 </div>
@@ -285,41 +286,72 @@ const UsersModule = {
         const roleClass = this.getRoleClass(user.role);
         const roleText = this.getRoleText(user.role);
         const isFromChat = user.is_from_configured_chat;
+        const telegramLink = user.username ? `https://t.me/${user.username}` : null;
         
         return `
-            <div class="user-card ${isFromChat ? 'from-chat' : ''}" data-user-id="${user.user_id}">
-                <div class="user-avatar">
-                    ${this.getUserInitials(user.first_name, user.last_name)}
-                    ${isFromChat ? '<span class="chat-badge">💬</span>' : ''}
+            <div class="user-card modern-card ${isFromChat ? 'from-chat' : ''}" data-user-id="${user.user_id}">
+                <div class="user-card-header">
+                    <div class="user-avatar-container">
+                        <div class="user-avatar-main">
+                            ${this.getUserInitials(user.first_name, user.last_name)}
+                        </div>
+                        ${isFromChat ? '<div class="chat-indicator" title="Участник чата">💬</div>' : ''}
+                        <div class="online-status ${isFromChat ? 'online' : 'offline'}"></div>
+                    </div>
+                    
+                    <div class="user-info-main">
+                        <div class="user-name-section">
+                            <h3 class="user-display-name">
+                                ${this.escapeHtml(user.first_name || '')} ${this.escapeHtml(user.last_name || '')}
+                                ${isFromChat ? '<span class="verified-icon" title="Активный участник">✓</span>' : ''}
+                            </h3>
+                            <div class="user-username-section">
+                                ${telegramLink ? `
+                                    <a href="${telegramLink}" target="_blank" class="telegram-link" title="Открыть в Telegram">
+                                        <span class="telegram-icon">📱</span>
+                                        @${this.escapeHtml(user.username)}
+                                    </a>
+                                ` : `
+                                    <span class="username-placeholder">@${this.escapeHtml(user.username || 'no_username')}</span>
+                                `}
+                            </div>
+                        </div>
+                        
+                        <div class="user-role-badge">
+                            <span class="role-tag ${roleClass}">${roleText}</span>
+                        </div>
+                    </div>
                 </div>
                 
-                <div class="user-info">
-                    <div class="user-name">
-                        ${this.escapeHtml(user.first_name || '')} ${this.escapeHtml(user.last_name || '')}
-                        ${isFromChat ? '<span class="verified-badge">✓</span>' : ''}
-                    </div>
-                    <div class="user-meta">
-                        <span class="user-username">@${this.escapeHtml(user.username || 'no_username')}</span>
-                        <span class="user-role ${roleClass}">${roleText}</span>
-                    </div>
-                    <div class="user-stats">
-                        <div class="stat-item">
-                            <span class="stat-label">Очки:</span>
-                            <span class="stat-value">${user.points || 0}</span>
+                <div class="user-card-body">
+                    <div class="user-stats-grid">
+                        <div class="stat-card points">
+                            <div class="stat-icon">🏆</div>
+                            <div class="stat-content">
+                                <div class="stat-value">${user.points || 0}</div>
+                                <div class="stat-label">Очки</div>
+                            </div>
                         </div>
-                        <div class="stat-item">
-                            <span class="stat-label">Баланс:</span>
-                            <span class="stat-value">${user.balance || 0}</span>
-                        </div>
+                        ${isFromChat ? `
+                            <div class="stat-card chat-member">
+                                <div class="stat-icon">👥</div>
+                                <div class="stat-content">
+                                    <div class="stat-value">Активен</div>
+                                    <div class="stat-label">В чате</div>
+                                </div>
+                            </div>
+                        ` : ''}
                     </div>
+                    
                     ${isFromChat ? `
-                        <div class="user-source">
-                            <span class="source-badge">Участник чата "${this.chatInfo?.chat?.title || 'Telegram'}"</span>
+                        <div class="chat-membership-badge">
+                            <span class="membership-icon">🎯</span>
+                            <span class="membership-text">Участник</span>
                         </div>
                     ` : ''}
                 </div>
                 
-                <div class="user-actions">
+                <div class="user-card-actions">
                     ${this.renderUserActions(user)}
                 </div>
             </div>
@@ -333,31 +365,42 @@ const UsersModule = {
         // Управление ролями
         if (user.role !== 'admin') {
             actions.push(`
-                <select class="form-select" onchange="UsersModule.updateUserRole('${user.user_id}', this.value)">
-                    <option value="user" ${user.role === 'user' ? 'selected' : ''}>Пользователь</option>
-                    <option value="moderator" ${user.role === 'moderator' ? 'selected' : ''}>Модератор</option>
-                    <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>Администратор</option>
-                </select>
+                <div class="role-selector">
+                    <select class="modern-select" onchange="UsersModule.updateUserRole('${user.user_id}', this.value)">
+                        <option value="user" ${user.role === 'user' ? 'selected' : ''}>👤 Пользователь</option>
+                        <option value="moderator" ${user.role === 'moderator' ? 'selected' : ''}>🛡️ Модератор</option>
+                        <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>👑 Администратор</option>
+                    </select>
+                </div>
             `);
         } else {
-            actions.push(`<span class="text-success font-weight-bold">Администратор</span>`);
+            actions.push(`
+                <div class="admin-badge">
+                    <span class="admin-label">👑 Администратор</span>
+                </div>
+            `);
         }
         
-        // Дополнительные действия
+        // Кнопки действий
         actions.push(`
-            <button class="btn btn-sm btn-info" onclick="UsersModule.viewUserDetails('${user.user_id}')">
-                Подробно
-            </button>
+            <div class="action-buttons">
+                <button class="action-btn primary" onclick="UsersModule.viewUserDetails('${user.user_id}')" title="Подробная информация">
+                    <span class="btn-icon">👁️</span>
+                    <span class="btn-text">Подробно</span>
+                </button>
         `);
         
         // Только для модераторов и админов
         if (user.role !== 'admin') {
             actions.push(`
-                <button class="btn btn-sm btn-warning" onclick="UsersModule.resetUserStats('${user.user_id}')">
-                    Сбросить
+                <button class="action-btn warning" onclick="UsersModule.resetUserStats('${user.user_id}')" title="Сбросить статистику">
+                    <span class="btn-icon">🔄</span>
+                    <span class="btn-text">Сброс</span>
                 </button>
             `);
         }
+        
+        actions.push(`</div>`);
         
         return actions.join('');
     },
@@ -408,10 +451,6 @@ const UsersModule = {
                 
                 <div class="detail-row">
                     <strong>Очки:</strong> ${user.points || 0}
-                </div>
-                
-                <div class="detail-row">
-                    <strong>Баланс:</strong> ${user.balance || 0}
                 </div>
                 
                 <div class="detail-row">

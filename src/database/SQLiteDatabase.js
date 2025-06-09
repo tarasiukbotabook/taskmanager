@@ -51,11 +51,14 @@ class SQLiteDatabase extends DatabaseInterface {
     // ==================== ЗАДАЧИ ====================
     
     async addTask(title, description, assigneeUsername, deadline, chatId, createdByUserId, estimatedTime = 0) {
-        return this.dbModule.addTask(title, description, assigneeUsername, deadline, chatId, createdByUserId, estimatedTime);
+        // database.js не поддерживает estimatedTime, игнорируем его
+        return this.dbModule.addTask(title, description, assigneeUsername, deadline, chatId, createdByUserId);
     }
     
     async getAllTasks(filter = {}) {
-        return this.dbModule.getAllTasks(filter);
+        // Конвертируем filter в chatId для совместимости с database.js
+        const chatId = filter.chatId || null;
+        return this.dbModule.getAllTasks(chatId);
     }
     
     async getTaskStats() {

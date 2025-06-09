@@ -663,8 +663,8 @@ ID задачи: #${taskId}`;
     }
 
     parseTaskCommand(text) {
-        // Простой парсер для команды
-        // Формат: task @username description deadline [time]
+        // Улучшенный парсер для команды /task
+        // Формат: /task Заголовок @username описание дедлайн
         const parts = text.trim().split(' ');
         let title = '';
         let assignee = '';
@@ -677,9 +677,11 @@ ID задачи: #${taskId}`;
             const part = parts[i];
             
             if (part.startsWith('@')) {
+                // Найден исполнитель - переключаемся на описание
                 assignee = part;
                 currentPart = 'description';
             } else if (part.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                // Найдена дата - это дедлайн
                 deadline = part;
                 // Проверяем следующую часть на время
                 if (i + 1 < parts.length && parts[i + 1].match(/^\d{1,2}:\d{2}$/)) {
@@ -688,6 +690,7 @@ ID задачи: #${taskId}`;
                 }
                 currentPart = 'done';
             } else {
+                // Добавляем к текущей части
                 if (currentPart === 'title') {
                     title += (title ? ' ' : '') + part;
                 } else if (currentPart === 'description') {

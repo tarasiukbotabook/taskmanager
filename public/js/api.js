@@ -73,8 +73,9 @@ const TasksAPI = {
 
     // Завершить задачу
     async complete(taskId) {
-        const response = await apiCall(`/tasks/${taskId}/complete`, {
-            method: 'POST'
+        const response = await apiCall(`/tasks/${taskId}`, {
+            method: 'PUT',
+            body: JSON.stringify({ status: 'completed' })
         });
         if (!response.ok) throw new Error('Failed to complete task');
         return response.json();
@@ -91,8 +92,9 @@ const TasksAPI = {
 
     // Отправить на проверку
     async submitForReview(taskId) {
-        const response = await apiCall(`/tasks/${taskId}/submit`, {
-            method: 'POST'
+        const response = await apiCall(`/tasks/${taskId}`, {
+            method: 'PUT',
+            body: JSON.stringify({ status: 'review' })
         });
         if (!response.ok) throw new Error('Failed to submit task for review');
         return response.json();
