@@ -105,6 +105,31 @@ const server = http.createServer((req, res) => {
                 completed: 0,
                 pending: 1
             }));
+        } else if (pathname === '/api/telegram/start-polling' && req.method === 'POST') {
+            // API для запуска polling бота
+            (async () => {
+                try {
+                    const botToken = await db.getSetting('bot_token');
+                    if (!botToken) {
+                        res.writeHead(400, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ error: 'Bot token not configured' }));
+                        return;
+                    }
+                    
+                    // Запускаем polling
+                    startBotPolling(botToken, db);
+                    
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ 
+                        success: true, 
+                        message: 'Bot polling started. Users can now send /start to register.' 
+                    }));
+                } catch (error) {
+                    res.writeHead(500, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: error.message }));
+                }
+            })();
+            return;
         } else if (pathname === '/api/admin/users') {
             // API пользователей из рабочего чата
             (async () => {
@@ -120,14 +145,32 @@ const server = http.createServer((req, res) => {
                         res.writeHead(200, { 'Content-Type': 'application/json' });
                         res.end(JSON.stringify(users || []));
                     } else {
-                        // Добавляем информацию о том, что это пользователи из настроенного чата
-                        const usersWithChatInfo = users.map(user => ({
-                            ...user,
-                            chat_id: workChatId,
-                            is_from_configured_chat: true
-                        }));
+                        // Фильтруем только активированных пользователей
+                        const activatedUsers = [];
+                        
+                        for (const user of users) {
+                            // Проверяем, активировал ли пользователь бота
+                            const isActivated = await db.getSetting(`user_activated_${user.user_id}`);
+                            
+                            if (isActivated) {
+                                // Проверяем, состоит ли в чате
+                                const botToken = await db.getSetting('bot_token');
+                                if (botToken) {
+                                    const isMember = await checkChatMembership(user.user_id, workChatId, botToken);
+                                    if (isMember) {
+                                        activatedUsers.push({
+                                            ...user,
+                                            chat_id: workChatId,
+                                            is_from_configured_chat: true,
+                                            is_activated: true
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                        
                         res.writeHead(200, { 'Content-Type': 'application/json' });
-                        res.end(JSON.stringify(usersWithChatInfo));
+                        res.end(JSON.stringify(activatedUsers));
                     }
                 } catch (error) {
                     console.error('Users API error:', error);
@@ -225,17 +268,38 @@ const server = http.createServer((req, res) => {
                                     
                                     console.log(`Chat ${workChatId} has ${membersCount.result} members`);
                                     
-                                    // Пока возвращаем пользователей из базы + информацию о количестве участников в чате
+                                    // Получаем актуальных пользователей из базы и обновляем их статус
                                     try {
                                         const users = await db.getAllUsersWithRoles();
+                                        
+                                        // Фильтруем только активированных пользователей, которые в чате
+                                        const filteredUsers = [];
+                                        const botToken = await db.getSetting('bot_token');
+                                        
+                                        for (const user of users) {
+                                            const isActivated = await db.getSetting(`user_activated_${user.user_id}`);
+                                            
+                                            if (isActivated && botToken) {
+                                                const isMember = await checkChatMembership(user.user_id, workChatId, botToken);
+                                                if (isMember) {
+                                                    filteredUsers.push({
+                                                        ...user,
+                                                        chat_id: workChatId,
+                                                        is_from_configured_chat: true,
+                                                        is_activated: true
+                                                    });
+                                                }
+                                            }
+                                        }
+                                        
                                         res.writeHead(200, { 'Content-Type': 'application/json' });
                                         res.end(JSON.stringify({
                                             success: true,
-                                            message: `Users list refreshed. Chat has ${membersCount.result} total members, ${users.length} have interacted with bot`,
-                                            users: users,
+                                            message: `Обновлено пользователей из чата`,
+                                            users: filteredUsers,
                                             chat_id: workChatId,
                                             total_chat_members: membersCount.result,
-                                            users_in_db: users.length,
+                                            users_in_db: filteredUsers.length,
                                             timestamp: new Date().toISOString()
                                         }));
                                     } catch (dbError) {
@@ -650,6 +714,167 @@ const server = http.createServer((req, res) => {
         res.end(JSON.stringify({ error: 'Internal server error' }));
     }
 });
+
+// Переменные для polling
+let pollingInterval = null;
+let lastUpdateId = 0;
+
+// Функция запуска polling бота
+function startBotPolling(botToken, db) {
+    if (pollingInterval) {
+        clearInterval(pollingInterval);
+    }
+    
+    console.log('🤖 Starting bot polling...');
+    
+    pollingInterval = setInterval(async () => {
+        try {
+            await pollTelegramUpdates(botToken, db);
+        } catch (error) {
+            console.error('Polling error:', error);
+        }
+    }, 2000); // Опрашиваем каждые 2 секунды
+}
+
+// Функция получения обновлений от Telegram
+async function pollTelegramUpdates(botToken, db) {
+    const https = require('https');
+    const url = `https://api.telegram.org/bot${botToken}/getUpdates?offset=${lastUpdateId + 1}&timeout=1`;
+    
+    return new Promise((resolve) => {
+        https.get(url, (res) => {
+            let data = '';
+            res.on('data', chunk => data += chunk);
+            res.on('end', async () => {
+                try {
+                    const response = JSON.parse(data);
+                    if (response.ok && response.result.length > 0) {
+                        for (const update of response.result) {
+                            await handleUpdate(update, botToken, db);
+                            lastUpdateId = update.update_id;
+                        }
+                    }
+                    resolve();
+                } catch (error) {
+                    console.error('Error parsing updates:', error);
+                    resolve();
+                }
+            });
+        }).on('error', (error) => {
+            console.error('Error getting updates:', error);
+            resolve();
+        });
+    });
+}
+
+// Обработка обновления
+async function handleUpdate(update, botToken, db) {
+    if (update.message && update.message.text) {
+        const message = update.message;
+        
+        // Обрабатываем команду /start
+        if (message.text === '/start') {
+            await handleStartCommand(message, botToken, db);
+        }
+    }
+}
+
+// Обработка команды /start
+async function handleStartCommand(message, botToken, db) {
+    try {
+        const user = message.from;
+        const workChatId = await db.getSetting('work_chat_id');
+        
+        // Сохраняем пользователя в базу данных
+        await db.addUser(
+            user.id.toString(),
+            user.username || null,
+            user.first_name || '',
+            user.last_name || null
+        );
+        
+        // Помечаем пользователя как активированного через бота
+        // Используем настройки для хранения активированных пользователей
+        await db.setSetting(`user_activated_${user.id}`, 'true', 'User activated via bot');
+        
+        console.log(`User registered: ${user.first_name} (@${user.username || 'no_username'})`);
+        
+        // Проверяем, состоит ли пользователь в рабочем чате
+        if (workChatId) {
+            const isMember = await checkChatMembership(user.id, workChatId, botToken);
+            if (isMember) {
+                await sendMessage(botToken, user.id, 
+                    '✅ Отлично! Вы зарегистрированы в системе управления задачами.\n\n' +
+                    'Вы являетесь участником рабочего чата и можете получать задачи.');
+            } else {
+                await sendMessage(botToken, user.id, 
+                    '⚠️ Вы зарегистрированы, но не состоите в рабочем чате.\n\n' +
+                    'Попросите администратора добавить вас в рабочий чат для получения задач.');
+            }
+        } else {
+            await sendMessage(botToken, user.id, 
+                '✅ Вы зарегистрированы в системе управления задачами!');
+        }
+        
+    } catch (error) {
+        console.error('Error handling /start command:', error);
+    }
+}
+
+// Проверка членства в чате
+async function checkChatMembership(userId, chatId, botToken) {
+    const https = require('https');
+    const url = `https://api.telegram.org/bot${botToken}/getChatMember?chat_id=${chatId}&user_id=${userId}`;
+    
+    return new Promise((resolve) => {
+        https.get(url, (res) => {
+            let data = '';
+            res.on('data', chunk => data += chunk);
+            res.on('end', () => {
+                try {
+                    const response = JSON.parse(data);
+                    if (response.ok) {
+                        const status = response.result.status;
+                        // Пользователь считается участником если он не покинул чат и не забанен
+                        resolve(['creator', 'administrator', 'member', 'restricted'].includes(status));
+                    } else {
+                        resolve(false);
+                    }
+                } catch (error) {
+                    resolve(false);
+                }
+            });
+        }).on('error', () => resolve(false));
+    });
+}
+
+// Отправка сообщения пользователю
+async function sendMessage(botToken, chatId, text) {
+    const https = require('https');
+    const postData = JSON.stringify({
+        chat_id: chatId,
+        text: text
+    });
+    
+    const options = {
+        hostname: 'api.telegram.org',
+        path: `/bot${botToken}/sendMessage`,
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(postData)
+        }
+    };
+    
+    return new Promise((resolve) => {
+        const req = https.request(options, (res) => {
+            resolve();
+        });
+        req.on('error', () => resolve());
+        req.write(postData);
+        req.end();
+    });
+}
 
 server.listen(PORT, '127.0.0.1', () => {
     console.log(`🚀 Minimal server running on http://127.0.0.1:${PORT}`);

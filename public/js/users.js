@@ -5,11 +5,13 @@
 
 const UsersModule = {
     users: [],
+    chatInfo: null,
     
     // Инициализация модуля
     init() {
         this.bindEvents();
         this.loadUsers();
+        this.loadChatInfo();
     },
     
     // Привязка событий
@@ -20,10 +22,26 @@ const UsersModule = {
             refreshBtn.addEventListener('click', () => this.refreshUsers());
         }
         
+        // Кнопка запуска обработки команд /start
+        const startPollingBtn = document.getElementById('startPollingBtn');
+        if (startPollingBtn) {
+            startPollingBtn.addEventListener('click', () => this.startBotPolling());
+        }
+        
         // Кнопка добавления пользователя
         const addUserBtn = document.getElementById('addUserBtn');
         if (addUserBtn) {
             addUserBtn.addEventListener('click', () => this.openAddUserModal());
+        }
+    },
+    
+    // Перепривязка событий после обновления HTML
+    rebindEvents() {
+        // Кнопка запуска polling
+        const startPollingBtn = document.getElementById('startPollingBtn');
+        if (startPollingBtn) {
+            startPollingBtn.removeEventListener('click', this.startBotPolling);
+            startPollingBtn.addEventListener('click', () => this.startBotPolling());
         }
     },
     
@@ -38,15 +56,130 @@ const UsersModule = {
         }
     },
     
+    // Загрузка информации о чате
+    async loadChatInfo() {
+        try {
+            this.chatInfo = await SettingsAPI.getChatInfo();
+            this.updateChatInfoDisplay();
+        } catch (error) {
+            console.error('Ошибка загрузки информации о чате:', error);
+            // Не показываем ошибку, так как чат может быть не настроен
+        }
+    },
+    
     // Обновление списка пользователей из Telegram
     async refreshUsers() {
+        const refreshBtn = document.getElementById('refreshUsersBtn');
+        if (refreshBtn) {
+            refreshBtn.disabled = true;
+            refreshBtn.textContent = 'Обновление...';
+        }
+        
         try {
             const result = await UsersAPI.refresh();
-            this.showNotification(result.message, 'success');
-            this.loadUsers();
+            
+            // Обновляем информацию о чате если есть данные
+            if (result.total_chat_members) {
+                this.updateChatStats(result.total_chat_members, result.users_in_db);
+            }
+            
+            // Обновляем список пользователей
+            this.users = result.users || [];
+            this.renderUsers();
+            
+            // Показываем краткое уведомление без назойливой информации
+            this.showNotification(`Обновлено: ${this.users.length} пользователей`, 'success');
         } catch (error) {
             console.error('Ошибка обновления пользователей:', error);
-            this.showNotification('Ошибка обновления пользователей', 'error');
+            this.showNotification('Ошибка обновления пользователей: ' + error.message, 'error');
+        } finally {
+            if (refreshBtn) {
+                refreshBtn.disabled = false;
+                refreshBtn.textContent = 'Обновить из Telegram';
+            }
+        }
+    },
+    
+    // Запуск обработки команд /start
+    async startBotPolling() {
+        const startBtn = document.getElementById('startPollingBtn');
+        if (startBtn) {
+            startBtn.disabled = true;
+            startBtn.textContent = 'Запуск...';
+        }
+        
+        try {
+            const result = await BotAPI.startPolling();
+            
+            if (result.success) {
+                this.showNotification('Бот запущен! Участники чата могут написать /start боту для регистрации.', 'success');
+                this.updatePollingStatus(true);
+            } else {
+                throw new Error('Не удалось запустить бот');
+            }
+            
+        } catch (error) {
+            console.error('Ошибка запуска бота:', error);
+            this.showNotification('Ошибка запуска бота: ' + error.message, 'error');
+        } finally {
+            if (startBtn) {
+                startBtn.disabled = false;
+                startBtn.textContent = 'Запустить бота';
+            }
+        }
+    },
+    
+    // Обновление статуса polling
+    updatePollingStatus(isActive) {
+        const statusElement = document.getElementById('pollingStatus');
+        if (statusElement) {
+            statusElement.innerHTML = isActive 
+                ? '<span class="text-success">🟢 Бот активен</span>'
+                : '<span class="text-warning">🟡 Бот неактивен</span>';
+        }
+        
+        const startBtn = document.getElementById('startPollingBtn');
+        if (startBtn && isActive) {
+            startBtn.style.display = 'none';
+        }
+    },
+    
+    // Обновление отображения информации о чате
+    updateChatInfoDisplay() {
+        const chatInfoElement = document.getElementById('chatInfo');
+        if (chatInfoElement && this.chatInfo) {
+            chatInfoElement.innerHTML = `
+                <div class="chat-info-header">
+                    <div class="chat-avatar">💬</div>
+                    <div class="chat-details">
+                        <h3>${this.escapeHtml(this.chatInfo.chat.title)}</h3>
+                        <p class="text-light">ID: ${this.chatInfo.chat.id} • ${this.getChatTypeText(this.chatInfo.chat.type)}</p>
+                    </div>
+                </div>
+            `;
+        }
+    },
+    
+    // Обновление статистики чата
+    updateChatStats(totalMembers, usersInDb) {
+        const statsElement = document.getElementById('chatStats');
+        if (statsElement) {
+            statsElement.innerHTML = `
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <span class="stat-number">${totalMembers}</span>
+                        <span class="stat-label">Всего участников</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-number">${usersInDb}</span>
+                        <span class="stat-label">В системе</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-number">${Math.round((usersInDb / totalMembers) * 100)}%</span>
+                        <span class="stat-label">Активность</span>
+                    </div>
+                </div>
+            `;
         }
     },
     
@@ -57,42 +190,133 @@ const UsersModule = {
         
         if (this.users.length === 0) {
             container.innerHTML = `
-                <div class="text-center p-5 text-light">
-                    <p>Пользователи не найдены</p>
-                    <button class="btn btn-primary" onclick="UsersModule.refreshUsers()">
-                        Обновить из Telegram
-                    </button>
+                <div class="empty-state">
+                    <div class="empty-icon">👥</div>
+                    <h3>Пользователи не найдены</h3>
+                    <p class="text-light">
+                        ${this.chatInfo 
+                            ? `Участники чата "${this.chatInfo.chat.title}" должны написать /start боту для регистрации в системе.` 
+                            : 'Сначала настройте чат в разделе "Настройки".'
+                        }
+                    </p>
+                    
+                    <div class="bot-info">
+                        <div id="pollingStatus">
+                            <span class="text-warning">🟡 Бот неактивен</span>
+                        </div>
+                        <p class="text-light">
+                            Запустите бота, участники смогут написать ему /start для автоматической регистрации.
+                        </p>
+                        <div class="instructions">
+                            <p class="text-light"><strong>Инструкция для участников:</strong></p>
+                            <ol class="text-light">
+                                <li>Найти бота в Telegram</li>
+                                <li>Написать команду /start</li>
+                                <li>Получить подтверждение регистрации</li>
+                            </ol>
+                        </div>
+                    </div>
+                    
+                    <div class="action-buttons">
+                        <button id="startPollingBtn" class="btn btn-success" onclick="UsersModule.startBotPolling()">
+                            <span>🤖</span> Запустить бота
+                        </button>
+                        <button class="btn btn-primary" onclick="UsersModule.refreshUsers()">
+                            <span>🔄</span> Обновить список
+                        </button>
+                    </div>
                 </div>
             `;
+            
+            // Перепривязываем события для кнопок в пустом состоянии
+            setTimeout(() => this.rebindEvents(), 100);
             return;
         }
         
-        container.innerHTML = this.users.map(user => this.renderUserCard(user)).join('');
+        // Группируем пользователей по ролям
+        const groupedUsers = this.groupUsersByRole();
+        
+        container.innerHTML = `
+            <div class="users-header">
+                <div class="users-summary">
+                    <p class="text-light">Найдено ${this.users.length} зарегистрированных участников чата "${this.chatInfo?.chat?.title || 'Telegram'}"</p>
+                </div>
+                
+                <div class="bot-controls">
+                    <div id="pollingStatus" class="polling-status">
+                        <span class="text-success">🟢 Бот активен</span>
+                    </div>
+                    <div class="action-buttons">
+                        <button class="btn btn-primary btn-sm" onclick="UsersModule.refreshUsers()">
+                            <span>🔄</span> Обновить список
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            ${Object.keys(groupedUsers).map(role => `
+                <div class="role-section">
+                    <h4 class="role-header">${this.getRoleText(role)} (${groupedUsers[role].length})</h4>
+                    <div class="users-grid">
+                        ${groupedUsers[role].map(user => this.renderUserCard(user)).join('')}
+                    </div>
+                </div>
+            `).join('')}
+        `;
+        
+        // Перепривязываем события после обновления HTML
+        this.rebindEvents();
+    },
+    
+    // Группировка пользователей по ролям
+    groupUsersByRole() {
+        return this.users.reduce((groups, user) => {
+            const role = user.role || 'executor';
+            if (!groups[role]) {
+                groups[role] = [];
+            }
+            groups[role].push(user);
+            return groups;
+        }, {});
     },
     
     // Отрисовка карточки пользователя
     renderUserCard(user) {
         const roleClass = this.getRoleClass(user.role);
         const roleText = this.getRoleText(user.role);
+        const isFromChat = user.is_from_configured_chat;
         
         return `
-            <div class="user-card" data-user-id="${user.user_id}">
+            <div class="user-card ${isFromChat ? 'from-chat' : ''}" data-user-id="${user.user_id}">
                 <div class="user-avatar">
                     ${this.getUserInitials(user.first_name, user.last_name)}
+                    ${isFromChat ? '<span class="chat-badge">💬</span>' : ''}
                 </div>
                 
                 <div class="user-info">
                     <div class="user-name">
                         ${this.escapeHtml(user.first_name || '')} ${this.escapeHtml(user.last_name || '')}
+                        ${isFromChat ? '<span class="verified-badge">✓</span>' : ''}
                     </div>
                     <div class="user-meta">
                         <span class="user-username">@${this.escapeHtml(user.username || 'no_username')}</span>
                         <span class="user-role ${roleClass}">${roleText}</span>
                     </div>
                     <div class="user-stats">
-                        <span>Очки: ${user.points || 0}</span>
-                        <span>Баланс: ${user.balance || 0}</span>
+                        <div class="stat-item">
+                            <span class="stat-label">Очки:</span>
+                            <span class="stat-value">${user.points || 0}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Баланс:</span>
+                            <span class="stat-value">${user.balance || 0}</span>
+                        </div>
                     </div>
+                    ${isFromChat ? `
+                        <div class="user-source">
+                            <span class="source-badge">Участник чата "${this.chatInfo?.chat?.title || 'Telegram'}"</span>
+                        </div>
+                    ` : ''}
                 </div>
                 
                 <div class="user-actions">
@@ -327,6 +551,17 @@ const UsersModule = {
             'admin': 'text-danger'
         };
         return classes[role] || 'text-secondary';
+    },
+    
+    // Получение текста типа чата
+    getChatTypeText(type) {
+        const types = {
+            'private': '👤 Приватный чат',
+            'group': '👥 Группа', 
+            'supergroup': '🏢 Супергруппа',
+            'channel': '📢 Канал'
+        };
+        return types[type] || `❓ ${type}`;
     },
     
     getRoleText(role) {

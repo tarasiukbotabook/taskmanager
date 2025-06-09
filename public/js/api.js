@@ -242,6 +242,15 @@ const BotAPI = {
         });
         if (!response.ok) throw new Error('Failed to test notifications');
         return response.json();
+    },
+
+    // Запустить polling для обработки команд /start
+    async startPolling() {
+        const response = await apiCall('/telegram/start-polling', {
+            method: 'POST'
+        });
+        if (!response.ok) throw new Error('Failed to start polling');
+        return response.json();
     }
 };
 
