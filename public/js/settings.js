@@ -139,29 +139,65 @@ const SettingsModule = {
     // Сохранение ID рабочего чата
     async saveWorkChatId() {
         const input = document.getElementById('workChatId');
-        if (!input) return;
+        if (!input) {
+            this.showNotification('Поле ID чата не найдено', 'error');
+            return;
+        }
         
         const chatId = input.value.trim();
+        
+        // Проверяем, введен ли ID чата
         if (!chatId) {
             this.showNotification('Введите ID чата', 'warning');
+            input.focus();
             return;
+        }
+        
+        // Валидация ID чата (должен начинаться с - для групп или быть числом для приватных чатов)
+        if (!chatId.match(/^-?\d+$/)) {
+            this.showNotification('Неверный формат ID чата. Используйте числовой ID (например: -1001234567890)', 'error');
+            input.focus();
+            return;
+        }
+        
+        // Блокируем кнопку на время сохранения
+        const saveBtn = document.getElementById('saveChatIdBtn');
+        if (saveBtn) {
+            saveBtn.disabled = true;
+            saveBtn.textContent = 'Сохранение...';
         }
         
         try {
             await SettingsAPI.save('work_chat_id', chatId);
             this.showNotification('ID рабочего чата сохранен', 'success');
-            this.loadSettings();
+            
+            // Обновляем настройки
+            await this.loadSettings();
             
             // Автоматически проверяем чат после сохранения
             setTimeout(() => this.checkWorkChatId(), 1000);
+            
         } catch (error) {
             console.error('Ошибка сохранения ID чата:', error);
-            this.showNotification('Ошибка сохранения ID чата', 'error');
+            this.showNotification('Ошибка сохранения ID чата: ' + error.message, 'error');
+        } finally {
+            // Разблокируем кнопку
+            if (saveBtn) {
+                saveBtn.disabled = false;
+                saveBtn.textContent = 'Сохранить';
+            }
         }
     },
     
     // Проверка рабочего чата
     async checkWorkChatId() {
+        // Блокируем кнопку проверки на время выполнения
+        const checkBtn = document.getElementById('checkChatBtn');
+        if (checkBtn) {
+            checkBtn.disabled = true;
+            checkBtn.textContent = 'Проверка...';
+        }
+        
         try {
             const chatInfo = await SettingsAPI.getChatInfo();
             
@@ -170,21 +206,45 @@ const SettingsModule = {
             
             if (statusElement) {
                 statusElement.innerHTML = `
-                    <span class="text-success">✓ Подключен</span>
+                    <span class="text-success">✓ Подключен к "${this.escapeHtml(chatInfo.chat.title)}"</span>
                 `;
             }
             
             if (infoElement) {
                 infoElement.innerHTML = `
                     <div class="chat-info-card">
-                        <h4>${this.escapeHtml(chatInfo.chat.title)}</h4>
-                        <p><strong>ID:</strong> ${chatInfo.chat.id}</p>
-                        <p><strong>Тип:</strong> ${this.escapeHtml(chatInfo.chat.type)}</p>
-                        <p><strong>Участников:</strong> ${chatInfo.chat.members_count}</p>
-                        ${chatInfo.chat.description ? `<p><strong>Описание:</strong> ${this.escapeHtml(chatInfo.chat.description)}</p>` : ''}
+                        <div class="d-flex align-center gap-3 mb-3">
+                            <div class="chat-avatar">💬</div>
+                            <div>
+                                <h4 class="mb-1">${this.escapeHtml(chatInfo.chat.title)}</h4>
+                                <p class="text-light mb-0">ID: ${chatInfo.chat.id}</p>
+                            </div>
+                        </div>
+                        
+                        <div class="chat-details">
+                            <div class="detail-row">
+                                <strong>Тип чата:</strong> ${this.getChatTypeText(chatInfo.chat.type)}
+                            </div>
+                            <div class="detail-row">
+                                <strong>Участников:</strong> ${chatInfo.chat.members_count}
+                            </div>
+                            ${chatInfo.chat.description ? `
+                                <div class="detail-row">
+                                    <strong>Описание:</strong> ${this.escapeHtml(chatInfo.chat.description)}
+                                </div>
+                            ` : ''}
+                            <div class="detail-row">
+                                <strong>Последняя проверка:</strong> 
+                                <span class="text-light">${this.formatTime(new Date())}</span>
+                            </div>
+                        </div>
                     </div>
                 `;
             }
+            
+            // Показываем уведомление об успешном подключении
+            this.showNotification(`Подключен к чату "${chatInfo.chat.title}"`, 'success');
+            
         } catch (error) {
             console.error('Ошибка проверки чата:', error);
             
@@ -199,8 +259,31 @@ const SettingsModule = {
             
             if (infoElement) {
                 infoElement.innerHTML = `
-                    <p class="text-danger">Не удалось получить информацию о чате</p>
+                    <div class="chat-error-card">
+                        <div class="d-flex align-center gap-2 mb-2">
+                            <span class="text-danger">⚠️</span>
+                            <strong>Ошибка подключения к чату</strong>
+                        </div>
+                        <p class="text-danger mb-2">${this.escapeHtml(error.message)}</p>
+                        <div class="chat-troubleshooting">
+                            <p class="text-light mb-2">Возможные причины:</p>
+                            <ul class="text-light">
+                                <li>Неверный ID чата</li>
+                                <li>Бот не добавлен в чат</li>
+                                <li>Бот не имеет прав в чате</li>
+                                <li>Чат не существует или удален</li>
+                            </ul>
+                        </div>
+                    </div>
                 `;
+            }
+            
+            this.showNotification('Ошибка подключения к чату: ' + error.message, 'error');
+        } finally {
+            // Разблокируем кнопку
+            if (checkBtn) {
+                checkBtn.disabled = false;
+                checkBtn.textContent = 'Проверить чат';
             }
         }
     },
@@ -635,6 +718,17 @@ const SettingsModule = {
         } catch {
             return 'Неизвестно';
         }
+    },
+    
+    // Получение текста типа чата
+    getChatTypeText(type) {
+        const types = {
+            'private': '👤 Приватный чат',
+            'group': '👥 Группа', 
+            'supergroup': '🏢 Супергруппа',
+            'channel': '📢 Канал'
+        };
+        return types[type] || `❓ ${type}`;
     },
     
     // Получение статуса подключения бота

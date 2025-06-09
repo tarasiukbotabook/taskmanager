@@ -110,8 +110,7 @@ const server = http.createServer((req, res) => {
             (async () => {
                 try {
                     // Получаем work_chat_id из настроек
-                    const workChatSetting = await db.getSetting('work_chat_id');
-                    const workChatId = workChatSetting ? workChatSetting.value : null;
+                    const workChatId = await db.getSetting('work_chat_id');
                     
                     // Получаем всех пользователей
                     const users = await db.getAllUsersWithRoles();
@@ -188,14 +187,12 @@ const server = http.createServer((req, res) => {
             (async () => {
                 try {
                     // Получаем work_chat_id из настроек
-                    const workChatSetting = await db.getSetting('work_chat_id');
-                    if (!workChatSetting || !workChatSetting.value) {
+                    const workChatId = await db.getSetting('work_chat_id');
+                    if (!workChatId) {
                         res.writeHead(400, { 'Content-Type': 'application/json' });
                         res.end(JSON.stringify({ error: 'Chat ID not configured' }));
                         return;
                     }
-                    
-                    const workChatId = workChatSetting.value;
                     
                     try {
                         // Получаем токен бота из настроек или переменных окружения
@@ -289,14 +286,12 @@ const server = http.createServer((req, res) => {
             // API для получения информации о чате
             (async () => {
                 try {
-                    const workChatSetting = await db.getSetting('work_chat_id');
-                    if (!workChatSetting || !workChatSetting.value) {
+                    const workChatId = await db.getSetting('work_chat_id');
+                    if (!workChatId) {
                         res.writeHead(400, { 'Content-Type': 'application/json' });
                         res.end(JSON.stringify({ error: 'Chat ID not configured' }));
                         return;
                     }
-                    
-                    const workChatId = workChatSetting.value;
                     
                     // Получаем токен бота из настроек или переменных окружения
                     let botToken = await db.getSetting('bot_token');
