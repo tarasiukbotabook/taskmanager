@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Task Manager - Модульная версия</title>
+    
+    <!-- CSS файлы в правильном порядке -->
+    <link rel="stylesheet" href="/css/variables.css">
+    <link rel="stylesheet" href="/css/reset.css">
+    <link rel="stylesheet" href="/css/layout.css">
+    <link rel="stylesheet" href="/css/sidebar.css">
+    <link rel="stylesheet" href="/css/buttons.css">
+    <link rel="stylesheet" href="/css/forms.css">
+    <link rel="stylesheet" href="/css/cards.css">
+    <link rel="stylesheet" href="/css/modals.css">
+    <link rel="stylesheet" href="/css/utilities.css">
+</head>
+<body>
+    <!-- Боковое меню -->
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <div class="logo">
+                📋 Task Manager
+            </div>
+        </div>
+        
+        <nav class="nav-menu">
+            <button class="nav-item active" data-page="dashboard">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/>
+                </svg>
+                Дашборд
+            </button>
+            
+            <button class="nav-item" data-page="tasks">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z"/>
+                </svg>
+                Задачи
+            </button>
+            
+            <button class="nav-item" data-page="analytics">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M22,21H2V3H4V19H6V17H10V19H12V16H16V19H18V17H22V21Z"/>
+                </svg>
+                Аналитика
+            </button>
+            
+            <button class="nav-item" data-page="users">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M16,4C18.11,4 19.99,5.89 19.99,8C19.99,10.11 18.11,12 16,12C13.89,12 12,10.11 12,8C12,5.89 13.89,4 16,4M16,14C20.42,14 24,15.79 24,18V20H8V18C8,15.79 11.58,14 16,14Z"/>
+                </svg>
+                Пользователи
+            </button>
+            
+            <button class="nav-item" data-page="settings">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.97 19.05,5.05L16.56,6.05C16.04,5.65 15.48,5.32 14.87,5.07L14.5,2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.52,5.32 7.96,5.66 7.44,6.05L4.95,5.05C4.73,4.96 4.46,5.05 4.34,5.27L2.34,8.73C2.21,8.95 2.27,9.22 2.46,9.37L4.57,11C4.53,11.34 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.21,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,17.94C7.96,18.34 8.52,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.48,18.68 16.04,18.34 16.56,17.94L19.05,18.95C19.27,19.04 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z"/>
+                </svg>
+                Настройки
+            </button>
+        </nav>
+    </div>
+
+    <!-- Основной контент -->
+    <div class="main-content">
+        <!-- Заголовок -->
+        <header class="header">
+            <h1 class="page-title">Дашборд</h1>
+            <div class="header-actions">
+                <div class="user-info">
+                    <div class="user-avatar">👤</div>
+                    <div class="user-details">
+                        <div class="user-name">Администратор</div>
+                        <div class="user-role">admin</div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Контент страниц -->
+        <div class="content">
+            <!-- Страница Дашборд -->
+            <div id="dashboardPage" class="page active">
+                <div class="cards-grid cards-grid-4 mb-5">
+                    <div class="stat-card">
+                        <div class="stat-number" id="totalTasks">0</div>
+                        <div class="stat-label">Всего задач</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" id="pendingTasks">0</div>
+                        <div class="stat-label">В ожидании</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" id="activeTasks">0</div>
+                        <div class="stat-label">В работе</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" id="completedTasks">0</div>
+                        <div class="stat-label">Завершено</div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">Последние задачи</h2>
+                        <button class="btn btn-primary" onclick="App.navigateTo('tasks')">
+                            Все задачи
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <div id="recentTasksList">
+                            <p class="text-light">Загрузка...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Страница Задачи -->
+            <div id="tasksPage" class="page">
+                <div class="d-flex justify-between align-center mb-4">
+                    <div class="filter-tabs">
+                        <button class="tab active" data-filter="all">Все</button>
+                        <button class="tab" data-filter="pending">Ожидают</button>
+                        <button class="tab" data-filter="in_progress">В работе</button>
+                        <button class="tab" data-filter="review">На проверке</button>
+                        <button class="tab" data-filter="completed">Завершены</button>
+                    </div>
+                    <button id="createTaskBtn" class="btn btn-primary">
+                        Создать задачу
+                    </button>
+                </div>
+
+                <div class="card">
+                    <div class="card-body p-0">
+                        <div id="tasksList">
+                            <p class="text-center p-5 text-light">Загрузка задач...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Страница Аналитика -->
+            <div id="analyticsPage" class="page">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h2 class="card-title">Детальная статистика</h2>
+                    </div>
+                    <div class="card-body">
+                        <div id="detailedStats">
+                            <p class="text-light">Загрузка...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">Метрики производительности</h2>
+                    </div>
+                    <div class="card-body">
+                        <div id="performanceMetrics">
+                            <p class="text-light">Загрузка...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Страница Пользователи -->
+            <div id="usersPage" class="page">
+                <div class="d-flex justify-between align-center mb-4">
+                    <div class="form-search w-50">
+                        <input type="text" 
+                               class="form-input" 
+                               placeholder="Поиск пользователей..."
+                               onkeyup="UsersModule.searchUsers(this.value)">
+                    </div>
+                    <div class="d-flex gap-3">
+                        <button id="refreshUsersBtn" class="btn btn-secondary">
+                            Обновить из Telegram
+                        </button>
+                        <button id="addUserBtn" class="btn btn-primary">
+                            Добавить пользователя
+                        </button>
+                    </div>
+                </div>
+
+                <div id="usersList">
+                    <p class="text-center p-5 text-light">Загрузка пользователей...</p>
+                </div>
+            </div>
+
+            <!-- Страница Настройки -->
+            <div id="settingsPage" class="page">
+                <div class="cards-grid cards-grid-2">
+                    <!-- Настройки бота -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h2 class="card-title">Telegram Bot</h2>
+                            <span id="botStatus" class="text-light">Проверка подключения...</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-group">
+                                <label class="form-label">Токен бота</label>
+                                <input type="password" 
+                                       id="botToken" 
+                                       class="form-input" 
+                                       placeholder="Вставьте токен от @BotFather">
+                                <div class="form-feedback">
+                                    <small class="text-light">
+                                        Формат: 123456789:ABCdefGHI-JKLmnoPQR_sTUv
+                                    </small>
+                                </div>
+                            </div>
+                            
+                            <div class="d-flex gap-2 mb-3">
+                                <button id="saveBotTokenBtn" class="btn btn-secondary btn-sm">
+                                    Сохранить токен
+                                </button>
+                                <button id="connectBotBtn" class="btn btn-success btn-sm">
+                                    Подключить бота
+                                </button>
+                            </div>
+                            
+                            <div id="botInfo" class="mt-3">
+                                <div class="bot-disconnected-card">
+                                    <div class="d-flex align-center gap-2 mb-2">
+                                        <span class="text-warning">⚠️</span>
+                                        <strong>Бот не подключен</strong>
+                                    </div>
+                                    <p class="text-light mb-2">Для работы системы необходимо подключить Telegram бота</p>
+                                    <div class="bot-setup-steps">
+                                        <p class="text-light mb-2">Шаги для подключения:</p>
+                                        <ol class="text-light">
+                                            <li>Получите токен от @BotFather</li>
+                                            <li>Введите токен в поле выше</li>
+                                            <li>Нажмите "Подключить бота"</li>
+                                        </ol>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Настройки чата -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h2 class="card-title">Рабочий чат</h2>
+                            <span id="chatStatus" class="text-light">Не настроен</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-group">
+                                <label class="form-label">ID рабочего чата</label>
+                                <input type="text" 
+                                       id="workChatId" 
+                                       class="form-input" 
+                                       placeholder="Введите ID чата">
+                            </div>
+                            <div class="d-flex gap-2">
+                                <button id="saveChatIdBtn" class="btn btn-primary">
+                                    Сохранить
+                                </button>
+                                <button id="checkChatBtn" class="btn btn-secondary">
+                                    Проверить
+                                </button>
+                            </div>
+                            <div id="chatInfo" class="mt-3"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Дополнительные настройки -->
+                <div class="card mt-4">
+                    <div class="card-header">
+                        <h2 class="card-title">Дополнительные настройки</h2>
+                    </div>
+                    <div class="card-body">
+                        <div id="otherSettings">
+                            <p class="text-light">Загрузка...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно для задач -->
+    <div id="taskModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Создать задачу</h3>
+                <button class="close-btn" onclick="TasksModule.hideModal('taskModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="taskForm">
+                    <input type="hidden" id="taskId" name="taskId">
+                    
+                    <div class="form-group">
+                        <label class="form-label required">Название</label>
+                        <input type="text" 
+                               id="taskTitle" 
+                               name="title" 
+                               class="form-input" 
+                               required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Описание</label>
+                        <textarea id="taskDescription" 
+                                  name="description" 
+                                  class="form-textarea" 
+                                  rows="3"></textarea>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Исполнитель</label>
+                            <input type="text" 
+                                   id="taskAssignee" 
+                                   name="assignee" 
+                                   class="form-input">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="form-label">Время (часы)</label>
+                            <input type="number" 
+                                   id="taskEstimatedTime" 
+                                   name="estimated_time" 
+                                   class="form-input" 
+                                   min="0" 
+                                   step="0.5">
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Дедлайн</label>
+                        <input type="datetime-local" 
+                               id="taskDeadline" 
+                               name="deadline" 
+                               class="form-input">
+                    </div>
+                    
+                    <div class="form-actions">
+                        <button type="button" 
+                                class="btn btn-secondary" 
+                                onclick="TasksModule.hideModal('taskModal')">
+                            Отмена
+                        </button>
+                        <button type="submit" class="btn btn-primary">
+                            Сохранить
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript файлы в правильном порядке -->
+    <script src="/js/api.js"></script>
+    <script src="/js/tasks.js"></script>
+    <script src="/js/users.js"></script>
+    <script src="/js/settings.js"></script>
+    <script src="/js/app.js"></script>
+</body>
+</html>

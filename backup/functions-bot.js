@@ -1,22 +1,32 @@
 const TelegramBot = require('node-telegram-bot-api');
-// Используем новый unified database interface
-const { createDatabase } = require('./src/database');
-
-// Инициализация единой базы данных
-let db;
-try {
-    db = createDatabase();
-    console.log('🤖 Bot: Unified database interface initialized');
-} catch (error) {
-    console.error('❌ Bot: Database initialization failed:', error);
-    process.exit(1);
-}
+// Используем Firestore для Firebase Functions
+const { addGroup, addUser, addTask, getAllTasks, completeTask, deleteTask, submitForReview, approveTask, requestRevision, returnToWork, getUserRole, getSetting } = require('./database-firestore');
 
 class TaskBot {
     constructor(token) {
-        this.bot = new TelegramBot(token, { polling: true });
+        this.bot = new TelegramBot(token, { polling: false }); // Отключаем polling
         this.setupCommands();
         this.setupCallbacks();
+    }
+    
+    // Метод для запуска бота когда нужно
+    startPolling() {
+        try {
+            this.bot.startPolling();
+            console.log('Bot polling started');
+        } catch (error) {
+            console.error('Error starting polling:', error);
+        }
+    }
+    
+    // Метод для остановки бота
+    stopPolling() {
+        try {
+            this.bot.stopPolling();
+            console.log('Bot polling stopped');
+        } catch (error) {
+            console.error('Error stopping polling:', error);
+        }
     }
 
     setupCommands() {
@@ -45,10 +55,10 @@ class TaskBot {
             try {
                 // Сохраняем информацию о группе и пользователе при активации
                 if (msg.chat.type === 'group' || msg.chat.type === 'supergroup') {
-                    await db.addGroup(msg.chat.id.toString(), msg.chat.title || 'Unknown Group');
+                    await addGroup(msg.chat.id.toString(), msg.chat.title || 'Unknown Group');
                 }
                 
-                await db.addUser(
+                await addUser(
                     msg.from.id.toString(),
                     msg.from.username,
                     msg.from.first_name,
@@ -83,7 +93,7 @@ class TaskBot {
         this.bot.onText(/\/help/, async (msg) => {
             try {
                 // Сохраняем пользователя и при команде help
-                await db.addUser(
+                await addUser(
                     msg.from.id.toString(),
                     msg.from.username,
                     msg.from.first_name,
@@ -172,10 +182,10 @@ class TaskBot {
     async handleTaskCommand(msg, taskText) {
         // Сохраняем информацию о группе и пользователе
         if (msg.chat.type === 'group' || msg.chat.type === 'supergroup') {
-            await db.addGroup(msg.chat.id.toString(), msg.chat.title || 'Unknown Group');
+            await addGroup(msg.chat.id.toString(), msg.chat.title || 'Unknown Group');
         }
         
-        await db.addUser(
+        await addUser(
             msg.from.id.toString(),
             msg.from.username,
             msg.from.first_name,
@@ -199,7 +209,7 @@ class TaskBot {
         }
 
         // Создаем задачу
-        const taskId = await db.addTask(
+        const taskId = await addTask(
             parsed.title,
             parsed.description,
             parsed.assignee,
@@ -251,7 +261,7 @@ ID задачи: #${taskId}`;
 
     async handleTasksCommand(msg) {
         const chatId = msg.chat.id.toString();
-        const tasks = await db.getAllTasks({ chatId });
+        const tasks = await getAllTasks(chatId);
 
         if (tasks.length === 0) {
             this.bot.sendMessage(msg.chat.id, `📝 Список задач пуст
@@ -328,7 +338,7 @@ ID задачи: #${taskId}`;
     }
 
     async handleCompleteTask(callbackQuery, taskId) {
-        const result = await db.completeTask(taskId);
+        const result = await completeTask(taskId);
         
         if (result > 0) {
             this.bot.answerCallbackQuery(callbackQuery.id, '✅ Задача выполнена!');
@@ -345,7 +355,7 @@ ID задачи: #${taskId}`;
     }
 
     async handleDeleteTask(callbackQuery, taskId) {
-        const result = await db.deleteTask(taskId);
+        const result = await deleteTask(taskId);
         
         if (result > 0) {
             this.bot.answerCallbackQuery(callbackQuery.id, '🗑️ Задача удалена');
@@ -386,15 +396,14 @@ ID задачи: #${taskId}`;
     async getUserRoleAndValidateChat(userId, chatId) {
         try {
             // Проверяем, что это рабочий чат
-            const workChatSetting = await db.getSetting('work_chat_id');
-            const workChatId = workChatSetting ? workChatSetting.value : null;
+            const workChatId = await getSetting('work_chat_id');
             if (workChatId && workChatId !== chatId.toString()) {
                 console.log(`Chat ${chatId} is not the work chat (${workChatId})`);
                 return { role: null, isWorkChat: false };
             }
 
             // Получаем роль пользователя из базы
-            const role = await db.getUserRole(userId.toString());
+            const role = await getUserRole(userId.toString());
             return { role, isWorkChat: true };
         } catch (error) {
             console.error('Error checking user role:', error);
@@ -470,7 +479,7 @@ ID задачи: #${taskId}`;
 
     async handleSubmitForReview(callbackQuery, taskId) {
         // Сначала проверяем, является ли пользователь исполнителем
-        const tasks = await db.getAllTasks({ chatId: callbackQuery.message.chat.id.toString() });
+        const tasks = await getAllTasks(callbackQuery.message.chat.id.toString());
         const task = tasks.find(t => t.id === taskId);
         
         if (!task) {
@@ -502,7 +511,7 @@ ID задачи: #${taskId}`;
             return;
         }
 
-        const result = await db.submitForReview(taskId, callbackQuery.from.id);
+        const result = await submitForReview(taskId, callbackQuery.from.id);
         
         if (result > 0) {
             this.bot.answerCallbackQuery(callbackQuery.id, { text: '📤 Задача отправлена на проверку' });
@@ -527,7 +536,7 @@ ID задачи: #${taskId}`;
             return;
         }
 
-        const result = await db.approveTask(taskId, callbackQuery.from.id);
+        const result = await approveTask(taskId, callbackQuery.from.id);
         
         if (result > 0) {
             this.bot.answerCallbackQuery(callbackQuery.id, { text: '✅ Задача принята!' });
@@ -561,13 +570,13 @@ ID задачи: #${taskId}`;
             if (msg.chat.id === chatId && msg.reply_to_message && msg.reply_to_message.message_id === messageId) {
                 const comment = msg.text;
                 
-                const result = await db.requestRevision(taskId, callbackQuery.from.id, comment);
+                const result = await requestRevision(taskId, callbackQuery.from.id, comment);
                 
                 if (result > 0) {
                     const newText = callbackQuery.message.text.replace('🔍 Задача на проверке:', '🔄 Задача на доработке:') + `\n\n💬 Комментарий: ${comment}`;
                     
                     // Получаем исполнителя из базы данных
-                    const tasks = await db.getAllTasks({ chatId: chatId.toString() });
+                    const tasks = await getAllTasks(chatId.toString());
                     const task = tasks.find(t => t.id === taskId);
                     const assigneeUsername = task ? task.assignee_username : '';
                     
@@ -629,14 +638,14 @@ ID задачи: #${taskId}`;
     }
 
     async handleReturnToWork(callbackQuery, taskId) {
-        const result = await db.returnToWork(taskId);
+        const result = await returnToWork(taskId);
         
         if (result > 0) {
             this.bot.answerCallbackQuery(callbackQuery.id, { text: '🔄 Задача взята в работу' });
             
             const newText = callbackQuery.message.text.replace('🔄 Задача на доработке:', '📋 Задача:').split('\n\n💬 Комментарий:')[0];
             // Получаем исполнителя из базы данных
-            const tasks = await db.getAllTasks({ chatId: callbackQuery.message.chat.id.toString() });
+            const tasks = await getAllTasks(callbackQuery.message.chat.id.toString());
             const task = tasks.find(t => t.id === taskId);
             const assigneeUsername = task ? task.assignee_username : '';
             

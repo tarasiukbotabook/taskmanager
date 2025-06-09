@@ -1,0 +1,49 @@
+/* Сброс стилей браузера */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: var(--font-family);
+    background: var(--background-color);
+    color: var(--text-color);
+    line-height: 1.6;
+    font-size: var(--font-size-base);
+}
+
+/* Показываем контент сразу без авторизации */
+.main-content {
+    display: block !important;
+}
+
+/* Базовые стили для списков */
+ul, ol {
+    list-style: none;
+}
+
+/* Базовые стили для ссылок */
+a {
+    text-decoration: none;
+    color: inherit;
+}
+
+/* Базовые стили для кнопок */
+button {
+    border: none;
+    background: none;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+/* Базовые стили для полей ввода */
+input, textarea, select {
+    font-family: inherit;
+    font-size: inherit;
+}
+
+/* Убираем outline для элементов с фокусом */
+*:focus {
+    outline: none;
+}

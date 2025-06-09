@@ -1,456 +1,666 @@
+// Загрузка переменных окружения из .env файла
 require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
+
+const http = require('http');
+const fs = require('fs');
 const path = require('path');
-const TaskBot = require('./bot');
-const database = process.env.USE_FIRESTORE ? './database-firestore' : './database';
-const { getAllTasks, getTaskStats, completeTask, deleteTask, updateTask, submitForReview, approveTask, requestRevision, returnToWork } = require(database);
+const url = require('url');
 
-const app = express();
-const PORT = process.env.PORT || 3000;
+// Новый unified database interface
+const { createDatabase } = require('./src/database');
 
-// Middleware
-app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-// Отдаем только определенные статичные файлы без авторизации
-app.use('/public', express.static(path.join(__dirname, 'public')));
-app.use('/node_modules', express.static(path.join(__dirname, 'node_modules')));
+const PORT = 3001;
 
-// Убрана авторизация для упрощения
+// Инициализация единой базы данных
+let db;
+try {
+    db = createDatabase();
+    console.log('🗄️  Unified database interface initialized');
+} catch (error) {
+    console.error('❌ Database initialization failed:', error);
+    process.exit(1);
+}
 
-// Инициализация бота
-let bot;
-let botToken = process.env.BOT_TOKEN;
-
-function initBot(token) {
-    if (bot) {
-        try {
-            console.log('Stopping existing bot instance...');
-            bot.bot.stopPolling();
-            bot = null;
-            // Даем время для корректного завершения polling
-            setTimeout(() => {}, 1000);
-        } catch (error) {
-            console.warn('Error stopping previous bot:', error);
-        }
+const server = http.createServer((req, res) => {
+    const parsedUrl = url.parse(req.url, true);
+    const pathname = parsedUrl.pathname;
+    
+    // Добавляем CORS заголовки
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    
+    if (req.method === 'OPTIONS') {
+        res.writeHead(200);
+        res.end();
+        return;
     }
     
     try {
-        console.log('Starting new bot instance...');
-        bot = new TaskBot(token);
-        botToken = token;
-        console.log('✅ Telegram bot started successfully');
-        return true;
-    } catch (error) {
-        console.error('❌ Error starting bot:', error);
-        return false;
-    }
-}
-
-if (botToken) {
-    const initResult = initBot(botToken);
-    console.log('Bot initialization result:', initResult);
-} else {
-    console.warn('BOT_TOKEN not provided. Add it in settings to start the bot.');
-    console.warn('Bot notifications will not work until token is set.');
-}
-
-// Убраны все роуты авторизации
-
-// API маршруты
-app.get('/api/tasks', async (req, res) => {
-    try {
-        const tasks = await getAllTasks();
-        res.json(tasks);
-    } catch (error) {
-        console.error('Error fetching tasks:', error);
-        res.status(500).json({ error: 'Failed to fetch tasks' });
-    }
-});
-
-app.get('/api/stats', async (req, res) => {
-    try {
-        const stats = await getTaskStats();
-        res.json(stats);
-    } catch (error) {
-        console.error('Error fetching stats:', error);
-        res.status(500).json({ error: 'Failed to fetch stats' });
-    }
-});
-
-app.put('/api/tasks/:id/complete', async (req, res) => {
-    try {
-        const taskId = req.params.id;
-        const result = await completeTask(taskId);
-        
-        if (result > 0) {
-            res.json({ success: true, message: 'Task completed successfully' });
-        } else {
-            res.status(404).json({ error: 'Task not found' });
-        }
-    } catch (error) {
-        console.error('Error completing task:', error);
-        res.status(500).json({ error: 'Failed to complete task' });
-    }
-});
-
-app.put('/api/tasks/:id', async (req, res) => {
-    try {
-        const taskId = req.params.id;
-        const { title, description, deadline } = req.body;
-        
-        if (!title || !deadline) {
-            return res.status(400).json({ error: 'Title and deadline are required' });
-        }
-        
-        const result = await updateTask(taskId, title, description, deadline);
-        
-        if (result > 0) {
-            res.json({ success: true, message: 'Task updated successfully' });
-        } else {
-            res.status(404).json({ error: 'Task not found' });
-        }
-    } catch (error) {
-        console.error('Error updating task:', error);
-        res.status(500).json({ error: 'Failed to update task' });
-    }
-});
-
-app.delete('/api/tasks/:id', async (req, res) => {
-    try {
-        const taskId = req.params.id;
-        const result = await deleteTask(taskId);
-        
-        if (result > 0) {
-            res.json({ success: true, message: 'Task deleted successfully' });
-        } else {
-            res.status(404).json({ error: 'Task not found' });
-        }
-    } catch (error) {
-        console.error('Error deleting task:', error);
-        res.status(500).json({ error: 'Failed to delete task' });
-    }
-});
-
-app.put('/api/tasks/:id/submit', async (req, res) => {
-    try {
-        const taskId = req.params.id;
-        const { userId } = req.body;
-        const result = await submitForReview(taskId, userId);
-        
-        if (result > 0) {
-            res.json({ success: true, message: 'Task submitted for review' });
-        } else {
-            res.status(404).json({ error: 'Task not found or already submitted' });
-        }
-    } catch (error) {
-        console.error('Error submitting task:', error);
-        res.status(500).json({ error: 'Failed to submit task' });
-    }
-});
-
-app.put('/api/tasks/:id/approve', async (req, res) => {
-    try {
-        const taskId = req.params.id;
-        const { reviewerId, comment } = req.body;
-        const result = await approveTask(taskId, reviewerId, comment);
-        
-        if (result.changes > 0) {
-            // Отправляем поздравительное сообщение в Telegram
-            if (bot && result.task) {
-                const timeSpent = result.task.time_spent_minutes || 0;
-                const efficiency = result.task.efficiency_score ? Math.round(result.task.efficiency_score * 100) : 100;
-                const points = Math.round(result.task.efficiency_score || 1);
-                
-                let congratsMessage = `🎉 Отличная работа, ${result.task.assignee_username}!
-
-📋 Задача "${result.task.title}" успешно выполнена!
-
-⏱️ Время выполнения: ${timeSpent} минут
-📊 Эффективность: ${efficiency}%
-💎 Заработано баллов: ${points}`;
-
-                try {
-                    await bot.bot.sendMessage(result.task.chat_id, congratsMessage);
-                    console.log(`Approval notification sent for task ${taskId} to chat ${result.task.chat_id}`);
-                } catch (telegramError) {
-                    console.error('Error sending Telegram message:', telegramError);
-                }
-            }
+        if (pathname === '/') {
+            // Главная страница - используем модульную версию
+            const modularPath = path.join(__dirname, 'public', 'modular-index.html');
+            const legacyPath = path.join(__dirname, 'public', 'index.html');
             
-            res.json({ success: true, message: 'Task approved and points awarded' });
-        } else {
-            res.status(404).json({ error: 'Task not found' });
-        }
-    } catch (error) {
-        console.error('Error approving task:', error);
-        res.status(500).json({ error: 'Failed to approve task' });
-    }
-});
-
-app.put('/api/tasks/:id/revision', async (req, res) => {
-    console.log('🚀 REVISION ENDPOINT CALLED!');
-    console.log('Request params:', req.params);
-    console.log('Request body:', req.body);
-    
-    try {
-        const taskId = req.params.id;
-        const { reviewerId, comment } = req.body;
-        
-        console.log(`Revision request: taskId=${taskId}, reviewerId=${reviewerId}, comment="${comment}"`);
-        
-        // Получаем задачу ПЕРЕД обновлением для сохранения chat_id
-        const tasks = await getAllTasks();
-        const originalTask = tasks.find(t => t.id == taskId);
-        
-        if (!originalTask) {
-            console.log(`Task ${taskId} not found in database`);
-            return res.status(404).json({ error: 'Task not found' });
-        }
-        
-        console.log(`Original task found: ${originalTask.title}, status: ${originalTask.status}, chat_id: ${originalTask.chat_id}`);
-        
-        // Проверяем, что задача может быть отклонена
-        if (originalTask.status !== 'review' && originalTask.status !== 'completed') {
-            console.log(`❌ Task ${taskId} cannot be rejected. Current status: ${originalTask.status}`);
-            return res.status(400).json({ error: `Task cannot be rejected. Current status: ${originalTask.status}. Only tasks with status 'review' can be rejected.` });
-        }
-        
-        // Обновляем статус задачи
-        const result = await requestRevision(taskId, reviewerId, comment);
-        console.log(`Revision update result: ${result} rows affected`);
-        
-        if (result > 0) {
-            // Отправляем уведомление об отклонении в Telegram
-            if (bot && originalTask.chat_id) {
-                try {
-                    const rejisionCount = (originalTask.revision_count || 0) + 1;
-                    const rejectionMessage = `🔄 Задача отклонена на доработку
-
-📋 Задача: ${originalTask.title}
-👤 Исполнитель: ${originalTask.assignee_username}
-💬 Причина: ${comment}
-
-Количество доработок: ${rejisionCount}
-
-⚠️ Пожалуйста, внесите необходимые исправления и отправьте задачу на проверку снова.`;
-
-                    // Создаем кнопку для возврата к работе
-                    const keyboard = {
-                        inline_keyboard: [[
-                            { text: '🔄 Взять в работу', callback_data: `return_${taskId}` }
-                        ]]
-                    };
-
-                    console.log(`Sending rejection notification to chat ${originalTask.chat_id}`);
-                    await bot.bot.sendMessage(originalTask.chat_id, rejectionMessage, {
-                        reply_markup: keyboard
-                    });
-                    console.log(`✅ Rejection notification sent successfully for task ${taskId}`);
-                } catch (telegramError) {
-                    console.error('❌ Error sending rejection notification:', telegramError);
-                    console.error('Full Telegram error:', telegramError);
-                }
+            // Проверяем, есть ли модульная версия
+            if (fs.existsSync(modularPath)) {
+                const content = fs.readFileSync(modularPath, 'utf8');
+                res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+                res.end(content);
+            } else if (fs.existsSync(legacyPath)) {
+                const content = fs.readFileSync(legacyPath, 'utf8');
+                res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+                res.end(content);
             } else {
-                console.log(`❌ Cannot send notification: bot=${!!bot}, chat_id=${originalTask.chat_id}`);
-                if (!bot) {
-                    console.log('❌ Bot is not initialized. Please set bot token in settings.');
-                }
-                if (!originalTask.chat_id) {
-                    console.log('❌ Task has no chat_id.');
-                }
+                res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+                res.end(`
+                    <!DOCTYPE html>
+                    <html>
+                    <head><title>Task Manager</title><meta charset="utf-8"></head>
+                    <body>
+                        <h1>🚀 Task Manager Server</h1>
+                        <p>Сервер работает на порту ${PORT}</p>
+                        <p>Время: ${new Date().toLocaleString('ru-RU')}</p>
+                        <ul>
+                            <li><a href="/api/health">Health Check</a></li>
+                            <li><a href="/api/tasks">Tasks API</a></li>
+                            <li><a href="/api/stats">Stats API</a></li>
+                            <li><a href="/legacy">Legacy версия</a></li>
+                        </ul>
+                    </body>
+                    </html>
+                `);
             }
+        } else if (pathname === '/legacy') {
+            // Legacy версия - старый index.html
+            const legacyPath = path.join(__dirname, 'public', 'index.html');
+            if (fs.existsSync(legacyPath)) {
+                const content = fs.readFileSync(legacyPath, 'utf8');
+                res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+                res.end(content);
+            } else {
+                res.writeHead(404, { 'Content-Type': 'text/plain' });
+                res.end('Legacy version not found');
+            }
+        } else if (pathname === '/api/health') {
+            // Health check
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+                status: 'ok',
+                timestamp: new Date().toISOString(),
+                port: PORT,
+                uptime: process.uptime()
+            }));
+        } else if (pathname === '/api/tasks') {
+            // Заглушка для задач
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify([
+                { id: 1, title: 'Тестовая задача', status: 'pending', assignee: 'test_user' }
+            ]));
+        } else if (pathname === '/api/stats') {
+            // Заглушка для статистики
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+                total: 1,
+                completed: 0,
+                pending: 1
+            }));
+        } else if (pathname === '/api/admin/users') {
+            // API пользователей из рабочего чата
+            (async () => {
+                try {
+                    // Получаем work_chat_id из настроек
+                    const workChatSetting = await db.getSetting('work_chat_id');
+                    const workChatId = workChatSetting ? workChatSetting.value : null;
+                    
+                    // Получаем всех пользователей
+                    const users = await db.getAllUsersWithRoles();
+                    
+                    if (!workChatId) {
+                        // Если чат ID не настроен, возвращаем всех пользователей
+                        res.writeHead(200, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify(users || []));
+                    } else {
+                        // Добавляем информацию о том, что это пользователи из настроенного чата
+                        const usersWithChatInfo = users.map(user => ({
+                            ...user,
+                            chat_id: workChatId,
+                            is_from_configured_chat: true
+                        }));
+                        res.writeHead(200, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify(usersWithChatInfo));
+                    }
+                } catch (error) {
+                    console.error('Users API error:', error);
+                    res.writeHead(500, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'Failed to fetch users' }));
+                }
+            })();
+        } else if (pathname === '/api/settings') {
+            // API для получения настроек
+            (async () => {
+                try {
+                    const settings = await db.getAllSettings();
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify(settings));
+                } catch (error) {
+                    console.error('Settings API error:', error);
+                    res.writeHead(500, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'Failed to fetch settings' }));
+                }
+            })();
+        } else if (pathname.startsWith('/api/settings/') && req.method === 'PUT') {
+            // API для сохранения настройки
+            const settingKey = pathname.split('/api/settings/')[1];
             
-            res.json({ success: true, message: 'Task sent for revision and notification sent' });
-        } else {
-            console.log(`❌ No rows affected when updating task ${taskId}`);
-            res.status(404).json({ error: 'Task not found or not updated' });
-        }
-    } catch (error) {
-        console.error('❌ Error in revision endpoint:', error);
-        res.status(500).json({ error: 'Failed to request revision' });
-    }
-});
-
-app.put('/api/tasks/:id/return', async (req, res) => {
-    try {
-        const taskId = req.params.id;
-        const result = await returnToWork(taskId);
-        
-        if (result > 0) {
-            res.json({ success: true, message: 'Task returned to work' });
-        } else {
-            res.status(404).json({ error: 'Task not found' });
-        }
-    } catch (error) {
-        console.error('Error returning task to work:', error);
-        res.status(500).json({ error: 'Failed to return task to work' });
-    }
-});
-
-// Настройки бота
-app.get('/api/bot/status', (req, res) => {
-    res.json({ 
-        isRunning: !!bot,
-        hasToken: !!botToken,
-        botInfo: bot ? 'Bot initialized' : 'Bot not initialized'
-    });
-});
-
-app.post('/api/bot/token', (req, res) => {
-    const { token } = req.body;
-    
-    if (!token) {
-        return res.status(400).json({ error: 'Token is required' });
-    }
-    
-    console.log('Attempting to initialize bot with new token...');
-    const success = initBot(token);
-    console.log('Bot initialization result:', success);
-    
-    if (success) {
-        console.log('Bot successfully started and ready for notifications');
-        res.json({ success: true, message: 'Bot started successfully' });
-    } else {
-        console.error('Failed to initialize bot with provided token');
-        res.status(400).json({ error: 'Failed to start bot. Check token validity.' });
-    }
-});
-
-app.post('/api/bot/stop', (req, res) => {
-    if (bot) {
-        bot.bot.stopPolling();
-        bot = null;
-        res.json({ success: true, message: 'Bot stopped' });
-    } else {
-        res.json({ success: true, message: 'Bot was not running' });
-    }
-});
-
-// API для рейтинга
-app.get('/api/rating', async (req, res) => {
-    try {
-        const rating = await getUserRating();
-        res.json(rating);
-    } catch (error) {
-        console.error('Error fetching rating:', error);
-        res.status(500).json({ error: 'Failed to fetch rating' });
-    }
-});
-
-// API для детальной статистики по исполнителям
-app.get('/api/stats/detailed', async (req, res) => {
-    try {
-        const detailedStats = await getDetailedTaskStats();
-        res.json(detailedStats);
-    } catch (error) {
-        console.error('Error fetching detailed stats:', error);
-        res.status(500).json({ error: 'Failed to fetch detailed stats' });
-    }
-});
-
-// API для метрик производительности
-app.get('/api/stats/performance', async (req, res) => {
-    try {
-        const performanceMetrics = await getTaskPerformanceMetrics();
-        res.json(performanceMetrics);
-    } catch (error) {
-        console.error('Error fetching performance metrics:', error);
-        res.status(500).json({ error: 'Failed to fetch performance metrics' });
-    }
-});
-
-// API для тестирования уведомлений
-app.post('/api/bot/test', async (req, res) => {
-    const { chatId } = req.body;
-    
-    if (!bot) {
-        return res.status(400).json({ error: 'Bot not initialized' });
-    }
-    
-    if (!chatId) {
-        return res.status(400).json({ error: 'Chat ID required' });
-    }
-    
-    try {
-        await bot.bot.sendMessage(chatId, '🧪 Тест уведомлений: бот работает!');
-        res.json({ success: true, message: 'Test message sent' });
-    } catch (error) {
-        console.error('Test message error:', error);
-        res.status(500).json({ error: 'Failed to send test message', details: error.message });
-    }
-});
-
-// API для напоминания о задаче
-app.post('/api/tasks/:id/remind', async (req, res) => {
-    try {
-        const taskId = req.params.id;
-        
-        // Получаем информацию о задаче
-        const tasks = await getAllTasks();
-        const task = tasks.find(t => t.id == taskId);
-        
-        if (!task) {
-            return res.status(404).json({ error: 'Task not found' });
-        }
-
-        if (task.status !== 'pending' && task.status !== 'revision') {
-            return res.status(400).json({ error: 'Can only remind about active tasks' });
-        }
-
-        // Отправляем напоминание в Telegram
-        if (bot && task.chat_id) {
-            const deadlineText = task.deadline ? ` до ${task.deadline}` : '';
-            const reminderMessage = `⏰ Напоминание о задаче!\n\n📋 ${task.title}\n👤 ${task.assignee_username}${deadlineText}\n\n${task.description || 'Описание не указано'}\n\n⚠️ Не забудьте выполнить задачу в срок!`;
+            let body = '';
+            req.on('data', chunk => {
+                body += chunk.toString();
+            });
             
-            try {
-                await bot.bot.sendMessage(task.chat_id, reminderMessage);
-                res.json({ success: true, message: 'Reminder sent successfully' });
-            } catch (telegramError) {
-                console.error('Error sending reminder:', telegramError);
-                res.status(500).json({ error: 'Failed to send reminder' });
+            req.on('end', async () => {
+                try {
+                    const { value } = JSON.parse(body);
+                    
+                    await db.setSetting(settingKey, value, '');
+                    
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ 
+                        success: true, 
+                        message: 'Setting saved successfully',
+                        key: settingKey,
+                        value: value
+                    }));
+                } catch (error) {
+                    console.error('Setting save error:', error);
+                    if (error.message.includes('JSON')) {
+                        res.writeHead(400, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ error: 'Invalid JSON data' }));
+                    } else {
+                        res.writeHead(500, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ error: 'Failed to save setting' }));
+                    }
+                }
+            });
+            return; // Важно: выходим из функции, чтобы не продолжать обработку
+        } else if (pathname === '/api/admin/users/refresh' && req.method === 'POST') {
+            // API для обновления списка пользователей из Telegram чата
+            (async () => {
+                try {
+                    // Получаем work_chat_id из настроек
+                    const workChatSetting = await db.getSetting('work_chat_id');
+                    if (!workChatSetting || !workChatSetting.value) {
+                        res.writeHead(400, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ error: 'Chat ID not configured' }));
+                        return;
+                    }
+                    
+                    const workChatId = workChatSetting.value;
+                    
+                    try {
+                        // Получаем токен бота из настроек или переменных окружения
+                        let botToken = await db.getSetting('bot_token');
+                        
+                        if (!botToken) {
+                            botToken = process.env.BOT_TOKEN;
+                        }
+                        
+                        if (!botToken) {
+                            res.writeHead(400, { 'Content-Type': 'application/json' });
+                            res.end(JSON.stringify({ error: 'Bot token not configured' }));
+                            return;
+                        }
+                        
+                        // Получаем количество участников чата
+                        const https = require('https');
+                        const chatMembersUrl = `https://api.telegram.org/bot${botToken}/getChatMembersCount?chat_id=${workChatId}`;
+                        
+                        https.get(chatMembersUrl, (telegramRes) => {
+                            let data = '';
+                            telegramRes.on('data', chunk => data += chunk);
+                            telegramRes.on('end', async () => {
+                                try {
+                                    const membersCount = JSON.parse(data);
+                                    
+                                    if (!membersCount.ok) {
+                                        throw new Error(membersCount.description || 'Failed to get chat members count');
+                                    }
+                                    
+                                    console.log(`Chat ${workChatId} has ${membersCount.result} members`);
+                                    
+                                    // Пока возвращаем пользователей из базы + информацию о количестве участников в чате
+                                    try {
+                                        const users = await db.getAllUsersWithRoles();
+                                        res.writeHead(200, { 'Content-Type': 'application/json' });
+                                        res.end(JSON.stringify({
+                                            success: true,
+                                            message: `Users list refreshed. Chat has ${membersCount.result} total members, ${users.length} have interacted with bot`,
+                                            users: users,
+                                            chat_id: workChatId,
+                                            total_chat_members: membersCount.result,
+                                            users_in_db: users.length,
+                                            timestamp: new Date().toISOString()
+                                        }));
+                                    } catch (dbError) {
+                                        console.error('Database error:', dbError);
+                                        res.writeHead(500, { 'Content-Type': 'application/json' });
+                                        res.end(JSON.stringify({ error: 'Database error' }));
+                                    }
+                                } catch (parseError) {
+                                    console.error('Telegram API parse error:', parseError);
+                                    res.writeHead(500, { 'Content-Type': 'application/json' });
+                                    res.end(JSON.stringify({ error: 'Failed to parse Telegram response' }));
+                                    db.close();
+                                }
+                            });
+                        }).on('error', async (telegramError) => {
+                            console.error('Telegram API error:', telegramError);
+                            // Fallback: возвращаем пользователей из базы
+                            try {
+                                const users = await db.getAllUsersWithRoles();
+                                res.writeHead(200, { 'Content-Type': 'application/json' });
+                                res.end(JSON.stringify({
+                                    success: true,
+                                    message: 'Users list refreshed (offline mode)',
+                                    users: users,
+                                    chat_id: workChatId,
+                                    warning: 'Could not fetch live chat data',
+                                    timestamp: new Date().toISOString()
+                                }));
+                            } catch (dbError) {
+                                console.error('Database error:', dbError);
+                                res.writeHead(500, { 'Content-Type': 'application/json' });
+                                res.end(JSON.stringify({ error: 'Database error' }));
+                            }
+                        });
+                    } catch (error) {
+                        console.error('Refresh error:', error);
+                        res.writeHead(500, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ error: 'Failed to refresh users' }));
+                    }
+                } catch (error) {
+                    console.error('Refresh API error:', error);
+                    res.writeHead(500, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'Failed to refresh users list' }));
+                }
+            })();
+            return;
+        } else if (pathname === '/api/admin/chat/info' && req.method === 'GET') {
+            // API для получения информации о чате
+            (async () => {
+                try {
+                    const workChatSetting = await db.getSetting('work_chat_id');
+                    if (!workChatSetting || !workChatSetting.value) {
+                        res.writeHead(400, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ error: 'Chat ID not configured' }));
+                        return;
+                    }
+                    
+                    const workChatId = workChatSetting.value;
+                    
+                    // Получаем токен бота из настроек или переменных окружения
+                    let botToken = await db.getSetting('bot_token');
+                    
+                    if (!botToken) {
+                        botToken = process.env.BOT_TOKEN;
+                    }
+                    
+                    if (!botToken) {
+                        res.writeHead(400, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ error: 'Bot token not configured' }));
+                        return;
+                    }
+                    
+                    // Получаем информацию о чате
+                    const https = require('https');
+                    const chatInfoUrl = `https://api.telegram.org/bot${botToken}/getChat?chat_id=${workChatId}`;
+                    
+                    https.get(chatInfoUrl, (telegramRes) => {
+                        let data = '';
+                        telegramRes.on('data', chunk => data += chunk);
+                        telegramRes.on('end', () => {
+                            try {
+                                const chatInfo = JSON.parse(data);
+                                
+                                if (!chatInfo.ok) {
+                                    throw new Error(chatInfo.description || 'Failed to get chat info');
+                                }
+                                
+                                // Получаем количество участников
+                                const membersCountUrl = `https://api.telegram.org/bot${botToken}/getChatMembersCount?chat_id=${workChatId}`;
+                                
+                                https.get(membersCountUrl, (membersRes) => {
+                                    let membersData = '';
+                                    membersRes.on('data', chunk => membersData += chunk);
+                                    membersRes.on('end', () => {
+                                        try {
+                                            const membersCount = JSON.parse(membersData);
+                                            
+                                            res.writeHead(200, { 'Content-Type': 'application/json' });
+                                            res.end(JSON.stringify({
+                                                success: true,
+                                                chat: {
+                                                    id: chatInfo.result.id,
+                                                    title: chatInfo.result.title,
+                                                    type: chatInfo.result.type,
+                                                    description: chatInfo.result.description,
+                                                    members_count: membersCount.ok ? membersCount.result : 'unknown'
+                                                }
+                                            }));
+                                        } catch (parseError) {
+                                            res.writeHead(200, { 'Content-Type': 'application/json' });
+                                            res.end(JSON.stringify({
+                                                success: true,
+                                                chat: {
+                                                    id: chatInfo.result.id,
+                                                    title: chatInfo.result.title,
+                                                    type: chatInfo.result.type,
+                                                    description: chatInfo.result.description,
+                                                    members_count: 'unknown'
+                                                }
+                                            }));
+                                        }
+                                    });
+                                }).on('error', () => {
+                                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                                    res.end(JSON.stringify({
+                                        success: true,
+                                        chat: {
+                                            id: chatInfo.result.id,
+                                            title: chatInfo.result.title,
+                                            type: chatInfo.result.type,
+                                            description: chatInfo.result.description,
+                                            members_count: 'unknown'
+                                        }
+                                    }));
+                                });
+                            } catch (parseError) {
+                                console.error('Chat info parse error:', parseError);
+                                res.writeHead(500, { 'Content-Type': 'application/json' });
+                                res.end(JSON.stringify({ error: 'Failed to parse chat info' }));
+                            }
+                        });
+                    }).on('error', (telegramError) => {
+                        console.error('Telegram chat info error:', telegramError);
+                        res.writeHead(500, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ error: 'Failed to get chat info' }));
+                    });
+                } catch (error) {
+                    console.error('Chat info API error:', error);
+                    res.writeHead(500, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'Failed to get chat information' }));
+                }
+            })();
+            return;
+        } else if ((pathname === '/api/bot/status' || pathname === '/api/admin/bot/status') && req.method === 'GET') {
+            // API для проверки статуса бота
+            (async () => {
+                try {
+                    // Сначала пытаемся получить токен из настроек
+                    let botToken = await db.getSetting('bot_token');
+                    
+                    // Если в настройках нет токена, используем переменную окружения
+                    if (!botToken) {
+                        botToken = process.env.BOT_TOKEN;
+                    }
+                    
+                    if (!botToken) {
+                        res.writeHead(200, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ 
+                            isRunning: false,
+                            hasToken: false,
+                            botInfo: 'Bot token not configured',
+                            status: 'offline'
+                        }));
+                        return;
+                    }
+                    
+                    try {
+                        // Проверяем бота через Telegram API
+                        const https = require('https');
+                        const botInfoUrl = `https://api.telegram.org/bot${botToken}/getMe`;
+                        
+                        https.get(botInfoUrl, (telegramRes) => {
+                            let data = '';
+                            telegramRes.on('data', chunk => data += chunk);
+                            telegramRes.on('end', () => {
+                                try {
+                                    const botInfo = JSON.parse(data);
+                                    
+                                    if (botInfo.ok && botInfo.result) {
+                                        res.writeHead(200, { 'Content-Type': 'application/json' });
+                                        res.end(JSON.stringify({
+                                            isRunning: true,
+                                            hasToken: true,
+                                            botInfo: `Bot @${botInfo.result.username} (${botInfo.result.first_name})`,
+                                            status: 'online',
+                                            botData: {
+                                                id: botInfo.result.id,
+                                                username: botInfo.result.username,
+                                                first_name: botInfo.result.first_name,
+                                                can_join_groups: botInfo.result.can_join_groups,
+                                                can_read_all_group_messages: botInfo.result.can_read_all_group_messages
+                                            }
+                                        }));
+                                    } else {
+                                        res.writeHead(200, { 'Content-Type': 'application/json' });
+                                        res.end(JSON.stringify({
+                                            isRunning: false,
+                                            hasToken: true,
+                                            botInfo: 'Bot token is invalid',
+                                            status: 'error',
+                                            error: botInfo.description || 'Invalid token'
+                                        }));
+                                    }
+                                } catch (parseError) {
+                                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                                    res.end(JSON.stringify({
+                                        isRunning: false,
+                                        hasToken: true,
+                                        botInfo: 'Failed to parse bot response',
+                                        status: 'error',
+                                        error: parseError.message
+                                    }));
+                                }
+                            });
+                        }).on('error', (telegramError) => {
+                            res.writeHead(200, { 'Content-Type': 'application/json' });
+                            res.end(JSON.stringify({
+                                isRunning: false,
+                                hasToken: true,
+                                botInfo: 'Failed to connect to Telegram API',
+                                status: 'error',
+                                error: telegramError.message
+                            }));
+                        });
+                    } catch (error) {
+                        res.writeHead(500, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({
+                            isRunning: false,
+                            hasToken: true,
+                            botInfo: 'Bot status check failed',
+                            status: 'error',
+                            error: error.message
+                        }));
+                    }
+                } catch (dbError) {
+                    console.error('Database error in bot status:', dbError);
+                    res.writeHead(500, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({
+                        isRunning: false,
+                        hasToken: false,
+                        botInfo: 'Database error',
+                        status: 'error',
+                        error: dbError.message
+                    }));
+                }
+            })();
+            return;
+        } else if ((pathname === '/api/bot/token' || pathname === '/api/admin/bot/token') && req.method === 'POST') {
+            // API для сохранения токена бота
+            let body = '';
+            req.on('data', chunk => {
+                body += chunk.toString();
+            });
+            
+            req.on('end', async () => {
+                try {
+                    const { token } = JSON.parse(body);
+                    
+                    if (!token) {
+                        res.writeHead(400, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ error: 'Token is required' }));
+                        return;
+                    }
+                    
+                    // Сохраняем токен в настройки
+                    await db.setSetting('bot_token', token, 'Telegram Bot Token');
+                    
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ 
+                        success: true, 
+                        message: 'Bot token saved successfully' 
+                    }));
+                } catch (error) {
+                    console.error('Bot token save error:', error);
+                    res.writeHead(500, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'Failed to save bot token' }));
+                }
+            });
+            return;
+        } else if ((pathname === '/api/bot/stop' || pathname === '/api/admin/bot/stop') && req.method === 'POST') {
+            // API для остановки бота
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ 
+                success: true, 
+                message: 'Bot stopped (simulation - no actual bot process running)' 
+            }));
+            return;
+        } else if ((pathname === '/api/bot/test' || pathname === '/api/admin/bot/test') && req.method === 'POST') {
+            // API для тестирования уведомлений
+            (async () => {
+                try {
+                    // Получаем токен бота и ID чата
+                    const botTokenSetting = await db.getSetting('bot_token');
+                    let botToken = botTokenSetting ? botTokenSetting.value : null;
+                    
+                    if (!botToken) {
+                        botToken = process.env.BOT_TOKEN;
+                    }
+                    
+                    const workChatSetting = await db.getSetting('work_chat_id');
+                    const workChatId = workChatSetting ? workChatSetting.value : null;
+                    
+                    if (!botToken || !workChatId) {
+                        res.writeHead(400, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ error: 'Bot token or chat ID not configured' }));
+                        return;
+                    }
+                    
+                    // Отправляем тестовое сообщение
+                    const https = require('https');
+                    const testMessage = `🔔 Тестовое уведомление от Task Manager\\n\\nВремя: ${new Date().toLocaleString('ru-RU')}\\nСтатус: Система работает корректно!`;
+                    
+                    const postData = JSON.stringify({
+                        chat_id: workChatId,
+                        text: testMessage,
+                        parse_mode: 'Markdown'
+                    });
+                    
+                    const options = {
+                        hostname: 'api.telegram.org',
+                        path: `/bot${botToken}/sendMessage`,
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Content-Length': Buffer.byteLength(postData)
+                        }
+                    };
+                    
+                    const req = https.request(options, (telegramRes) => {
+                        let data = '';
+                        telegramRes.on('data', chunk => data += chunk);
+                        telegramRes.on('end', () => {
+                            try {
+                                const result = JSON.parse(data);
+                                if (result.ok) {
+                                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                                    res.end(JSON.stringify({ 
+                                        success: true, 
+                                        message: 'Test notification sent successfully',
+                                        messageId: result.result.message_id
+                                    }));
+                                } else {
+                                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                                    res.end(JSON.stringify({ 
+                                        error: 'Failed to send test message',
+                                        details: result.description 
+                                    }));
+                                }
+                            } catch (parseError) {
+                                res.writeHead(500, { 'Content-Type': 'application/json' });
+                                res.end(JSON.stringify({ error: 'Failed to parse Telegram response' }));
+                            }
+                        });
+                    });
+                    
+                    req.on('error', (error) => {
+                        res.writeHead(500, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ error: 'Failed to send test notification' }));
+                    });
+                    
+                    req.write(postData);
+                    req.end();
+                    
+                } catch (error) {
+                    console.error('Test notification error:', error);
+                    res.writeHead(500, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'Failed to send test notification' }));
+                }
+            })();
+            return;
+        } else if (pathname.startsWith('/css/') || pathname.startsWith('/js/') || pathname.startsWith('/public/') || pathname.match(/\.(css|js|png|jpg|ico)$/)) {
+            // Статические файлы
+            let filePath;
+            if (pathname.startsWith('/css/') || pathname.startsWith('/js/')) {
+                filePath = path.join(__dirname, 'public', pathname);
+            } else {
+                filePath = path.join(__dirname, 'public', pathname.replace('/public/', ''));
+            }
+            if (fs.existsSync(filePath)) {
+                const ext = path.extname(filePath);
+                const contentType = {
+                    '.css': 'text/css',
+                    '.js': 'application/javascript',
+                    '.png': 'image/png',
+                    '.jpg': 'image/jpeg',
+                    '.ico': 'image/x-icon'
+                }[ext] || 'text/plain';
+                
+                const content = fs.readFileSync(filePath);
+                res.writeHead(200, { 'Content-Type': contentType });
+                res.end(content);
+            } else {
+                res.writeHead(404, { 'Content-Type': 'text/plain' });
+                res.end('File not found');
             }
         } else {
-            res.status(500).json({ error: 'Bot not available' });
+            // 404
+            res.writeHead(404, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Not found' }));
         }
     } catch (error) {
-        console.error('Error sending reminder:', error);
-        res.status(500).json({ error: 'Failed to send reminder' });
+        console.error('Request error:', error);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Internal server error' }));
     }
 });
 
-// Убраны API для управления ролями и настройками
-
-// Статичные ресурсы
-app.use('/', express.static(path.join(__dirname, 'public')));
-
-// 404 handler
-app.use('*', (req, res) => {
-    res.status(404).json({ error: 'Route not found' });
+server.listen(PORT, '127.0.0.1', () => {
+    console.log(`🚀 Minimal server running on http://127.0.0.1:${PORT}`);
+    console.log(`📊 Health: http://127.0.0.1:${PORT}/api/health`);
 });
 
-// Error handler
-app.use((error, req, res, next) => {
-    console.error('Unhandled error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-});
-
-// Graceful shutdown
-process.on('SIGINT', () => {
-    console.log('Shutting down gracefully...');
-    if (bot) {
-        bot.bot.stopPolling();
-    }
-    process.exit(0);
-});
-
-app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
-    console.log(`Web interface: http://localhost:${PORT}`);
-    console.log('API endpoints:');
-    console.log('- GET /api/tasks - получить все задачи');
-    console.log('- GET /api/stats - получить статистику');
-    console.log('- PUT /api/tasks/:id/complete - отметить задачу как выполненную');
-    console.log('- DELETE /api/tasks/:id - удалить задачу');
+server.on('error', (err) => {
+    console.error('Server error:', err);
 });

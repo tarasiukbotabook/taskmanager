@@ -18,42 +18,12 @@
             line-height: 1.6;
         }
 
-        /* Скрываем весь контент до проверки авторизации */
+        /* Показываем контент сразу без авторизации */
         .main-content {
-            display: none !important;
-        }
-
-        .main-content.authenticated {
             display: block !important;
         }
 
-        /* Показываем loader во время проверки */
-        .auth-loader {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: #f8faf9;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 9999;
-        }
-
-        .loader-spinner {
-            width: 40px;
-            height: 40px;
-            border: 4px solid #e2e8f0;
-            border-top: 4px solid #00796b;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
+        /* Убран CSS для loader-spinner */
 
         /* Боковое меню */
         .sidebar {
@@ -523,78 +493,6 @@
             color: #64748b;
         }
 
-        /* Рейтинг */
-        .rating-item {
-            background: white;
-            border: 1px solid #e2e8f0;
-            border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 15px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            transition: transform 0.2s ease;
-        }
-
-        .rating-item:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        }
-
-        .rating-item.top-1 {
-            background: linear-gradient(135deg, #ffd700, #ffed4e);
-            border-color: #ffd700;
-        }
-
-        .rating-item.top-2 {
-            background: linear-gradient(135deg, #c0c0c0, #e5e5e5);
-            border-color: #c0c0c0;
-        }
-
-        .rating-item.top-3 {
-            background: linear-gradient(135deg, #cd7f32, #daa55a);
-            border-color: #cd7f32;
-        }
-
-        .rating-position {
-            font-size: 2rem;
-            font-weight: 700;
-            min-width: 60px;
-            text-align: center;
-        }
-
-        .rating-info {
-            flex: 1;
-            margin-left: 20px;
-        }
-
-        .rating-name {
-            font-weight: 600;
-            font-size: 1.1rem;
-            margin-bottom: 5px;
-        }
-
-        .rating-username {
-            color: #64748b;
-            font-size: 14px;
-        }
-
-        .rating-stats {
-            display: flex;
-            gap: 20px;
-            align-items: center;
-        }
-
-        .rating-points {
-            font-size: 1.5rem;
-            font-weight: 700;
-            color: #00796b;
-        }
-
-        .rating-balance {
-            font-size: 1.2rem;
-            color: #2196f3;
-        }
 
         /* Адаптивность */
         @media (max-width: 768px) {
@@ -651,18 +549,6 @@
                 </svg>
                 Дашборд
             </button>
-            <button class="nav-item" onclick="showPage('employees')">
-                <svg viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M16 7c0-2.21-1.79-4-4-4S8 4.79 8 7s1.79 4 4 4 4-1.79 4-4zm-4 6c-2.67 0-8 1.34-8 4v3h16v-3c0-2.66-5.33-4-8-4z"/>
-                </svg>
-                Сотрудники
-            </button>
-            <button class="nav-item" onclick="showPage('rating')">
-                <svg viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-                </svg>
-                Рейтинг
-            </button>
             <button class="nav-item" onclick="showPage('analytics')">
                 <svg viewBox="0 0 24 24" fill="currentColor">
                     <path d="M16,11V3H8v6H2v12h20V11H16z M10,5h4v14h-4V5z M4,11h4v8H4V11z M20,19h-4v-6h4V19z"/>
@@ -676,6 +562,12 @@
                 </svg>
                 Пользователи
             </button>
+            <button class="nav-item" onclick="showPage('admin')" id="adminNavItem" style="display: none;">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                </svg>
+                Админ
+            </button>
             <button class="nav-item" onclick="showPage('settings')">
                 <svg viewBox="0 0 24 24" fill="currentColor">
                     <path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41 h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.74,8.87 C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.07,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54 c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96 c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.47-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6 s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"/>
@@ -685,10 +577,7 @@
         </nav>
     </div>
 
-    <!-- Loader во время проверки авторизации -->
-    <div class="auth-loader" id="authLoader">
-        <div class="loader-spinner"></div>
-    </div>
+    <!-- Убран loader авторизации -->
 
     <!-- Основной контент -->
     <div class="main-content" id="mainContent">
@@ -772,58 +661,8 @@
             </div>
         </div>
 
-        <!-- Страница сотрудников -->
-        <div id="employees-page" class="page" style="display: none;">
-            <div class="header">
-                <h1 class="page-title">Сотрудники</h1>
-                <div class="header-actions">
-                    <button class="btn btn-primary" onclick="openEmployeeModal()">
-                        <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
-                            <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
-                        </svg>
-                        Добавить сотрудника
-                    </button>
-                </div>
-            </div>
-            <div class="content">
-                <div class="tasks-container">
-                    <div class="tasks-header">
-                        <h3>Список сотрудников</h3>
-                    </div>
-                    <div style="padding: 25px;">
-                        <div class="employee-list" id="employeeList">
-                            <!-- Сотрудники будут добавляться динамически -->
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+        <!-- Страница сотрудников удалена -->
 
-        <!-- Страница рейтинга -->
-        <div id="rating-page" class="page" style="display: none;">
-            <div class="header">
-                <h1 class="page-title">Рейтинг сотрудников</h1>
-            </div>
-            <div class="content">
-                <div class="tasks-container">
-                    <div class="tasks-header">
-                        <h3>Топ по баллам</h3>
-                        <button class="btn btn-secondary" onclick="loadRating()">
-                            <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
-                                <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8z"/>
-                                <path d="M12 18c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/>
-                            </svg>
-                            Обновить
-                        </button>
-                    </div>
-                    <div style="padding: 25px;">
-                        <div id="ratingList">
-                            <!-- Рейтинг будет загружаться динамически -->
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
 
         <!-- Страница аналитики -->
         <div id="analytics-page" class="page" style="display: none;">
@@ -869,7 +708,7 @@
             <div class="header">
                 <h1 class="page-title">Управление пользователями</h1>
                 <div class="header-actions">
-                    <button class="btn btn-secondary" onclick="loadUsers()">
+                    <button class="btn btn-secondary" onclick="refreshUsers()">
                         <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
                             <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8z"/>
                             <path d="M12 18c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/>
@@ -881,13 +720,52 @@
             <div class="content">
                 <div class="tasks-container">
                     <div class="tasks-header">
-                        <h3>Роли пользователей</h3>
+                        <h3>Пользователи из настроенного чата</h3>
                         <div style="font-size: 14px; color: #64748b;">
+                            Отображаются пользователи, которые взаимодействовали с ботом в настроенном чате.<br>
                             <strong>executor</strong> - исполнитель, <strong>manager</strong> - менеджер, <strong>admin</strong> - администратор
                         </div>
                     </div>
                     <div style="padding: 25px;">
                         <div id="usersList">
+                            <!-- Пользователи будут загружаться динамически -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Страница админа -->
+        <div id="admin-page" class="page" style="display: none;">
+            <div class="header">
+                <h1 class="page-title">Администрирование</h1>
+                <div class="header-actions">
+                    <button class="btn btn-secondary" onclick="loadAdminUsers()">
+                        <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+                            <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8z"/>
+                            <path d="M12 18c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/>
+                        </svg>
+                        Обновить
+                    </button>
+                </div>
+            </div>
+            <div class="content">
+                <div class="tasks-container">
+                    <div class="tasks-header">
+                        <h3>🤖 Пользователи бота (токен: 7539351581:AAGn...)</h3>
+                        <div style="font-size: 14px; color: #64748b;">
+                            Все пользователи, которые активировали бота @workprobusinessbot и взаимодействовали с ним
+                        </div>
+                    </div>
+                    <div style="padding: 25px;">
+                        <div style="background: #e8f5e8; border: 1px solid #4caf50; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
+                            <h4 style="margin: 0 0 10px 0; color: #2e7d32;">📱 Активные пользователи бота</h4>
+                            <p style="margin: 0; font-size: 14px; color: #388e3c;">
+                                Здесь отображаются все пользователи, которые отправили хотя бы одну команду боту.
+                                Пользователи автоматически добавляются при первом взаимодействии.
+                            </p>
+                        </div>
+                        <div id="adminUsersList">
                             <!-- Пользователи будут загружаться динамически -->
                         </div>
                     </div>
@@ -918,26 +796,23 @@
                                 </div>
                                 
                                 <div id="botTokenForm">
-                                    <div style="margin-bottom: 10px;">
-                                        <label class="form-label" style="margin-bottom: 5px;">Токен бота:</label>
-                                        <div style="display: flex; gap: 10px;">
-                                            <input type="text" id="botTokenInput" class="form-input" placeholder="Введите токен от @BotFather" style="flex: 1;">
-                                            <button id="saveBotToken" class="btn btn-primary">Сохранить</button>
-                                        </div>
+                                    <div style="margin-bottom: 10px; padding: 10px; background: #e8f5e8; border-radius: 6px; border: 1px solid #4caf50;">
+                                        <strong style="color: #2e7d32;">📱 Токен бота предустановлен</strong>
+                                        <p style="margin: 5px 0 0 0; font-size: 14px; color: #388e3c;">Бот автоматически запускается с встроенным токеном</p>
                                     </div>
                                     <div style="display: flex; gap: 10px;">
-                                        <button id="stopBot" class="btn btn-danger" style="font-size: 12px;">Остановить бота</button>
-                                        <button id="testBot" class="btn btn-secondary" style="font-size: 12px;">Тест уведомлений</button>
+                                        <button id="testBot" class="btn btn-primary" style="font-size: 12px;">🧪 Тест уведомлений</button>
+                                        <button id="stopBot" class="btn btn-danger" style="font-size: 12px;">⏹️ Остановить бота</button>
                                     </div>
                                 </div>
                                 
                                 <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #e2e8f0;">
-                                    <h4 style="margin: 0 0 10px 0; color: #00796b;">Как настроить:</h4>
+                                    <h4 style="margin: 0 0 10px 0; color: #00796b;">Как использовать:</h4>
                                     <ol style="margin: 0; padding-left: 20px; font-size: 14px; color: #64748b;">
-                                        <li>Создайте бота через @BotFather в Telegram</li>
-                                        <li>Скопируйте токен бота</li>
-                                        <li>Вставьте токен в поле выше и нажмите "Сохранить"</li>
+                                        <li>Найдите бота @taskman_productivbot в Telegram</li>
                                         <li>Добавьте бота в группу и дайте права администратора</li>
+                                        <li>Начните создавать задачи командой /task</li>
+                                        <li>Используйте кнопку "Тест уведомлений" для проверки</li>
                                     </ol>
                                     <div style="margin-top: 10px; padding: 8px; background: #e0f2f1; border-radius: 4px;">
                                         <strong>Команды бота:</strong><br>
@@ -956,9 +831,13 @@
                                     <div style="display: flex; gap: 10px;">
                                         <input type="text" id="workChatId" class="form-input" placeholder="-1001234567890" style="flex: 1;">
                                         <button id="saveWorkChatId" class="btn btn-primary">Сохранить</button>
+                                        <button id="checkWorkChatId" class="btn btn-secondary">Проверить</button>
                                     </div>
                                     <div style="font-size: 12px; color: #64748b; margin-top: 5px;">
                                         Добавьте бота в группу и отправьте команду /tasks чтобы получить Chat ID
+                                    </div>
+                                    <div id="chatInfo" style="margin-top: 10px; padding: 10px; background: #e8f5e8; border-radius: 6px; display: none;">
+                                        <!-- Информация о чате будет отображаться здесь -->
                                     </div>
                                 </div>
                             </div>
@@ -1016,37 +895,7 @@
         </div>
     </div>
 
-    <!-- Модальное окно добавления сотрудника -->
-    <div class="modal" id="employeeModal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3 class="modal-title">Добавить сотрудника</h3>
-                <button class="close-btn" onclick="closeModal('employeeModal')">&times;</button>
-            </div>
-            <form id="employeeForm">
-                <div class="form-group">
-                    <label class="form-label">Имя *</label>
-                    <input type="text" class="form-input" id="employeeName" required>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Email *</label>
-                    <input type="email" class="form-input" id="employeeEmail" required>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Должность</label>
-                    <input type="text" class="form-input" id="employeePosition">
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Username (для Telegram)</label>
-                    <input type="text" class="form-input" id="employeeUsername" placeholder="@username">
-                </div>
-                <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 25px;">
-                    <button type="button" class="btn btn-secondary" onclick="closeModal('employeeModal')">Отмена</button>
-                    <button type="submit" class="btn btn-primary">Добавить</button>
-                </div>
-            </form>
-        </div>
-    </div>
+    <!-- Модальное окно добавления сотрудника удалено -->
 
     <!-- Модальное окно редактирования задачи -->
     <div class="modal" id="editTaskModal">
@@ -1079,12 +928,7 @@
 
     <script>
         // Данные
-        let employees = [
-            { id: 1, name: 'Анна Петрова', email: 'anna@company.com', position: 'UX/UI Дизайнер', username: '@anna_designer' },
-            { id: 2, name: 'Алексей Смирнов', email: 'alex@company.com', position: 'Frontend Developer', username: '@alex_dev' },
-            { id: 3, name: 'Мария Иванова', email: 'maria@company.com', position: 'Project Manager', username: '@maria_pm' },
-            { id: 4, name: 'Дмитрий Козлов', email: 'dmitry@company.com', position: 'Backend Developer', username: '@dmitry_backend' }
-        ];
+        // Массив employees удален
 
         let tasks = [];
         let nextEmployeeId = 5;
@@ -1237,37 +1081,27 @@
 
         async function testBotNotifications() {
             try {
-                // Получаем chat_id из последней задачи
-                const response = await apiCall('/api/tasks');
-                if (response.ok) {
-                    const tasks = await response.json();
-                    if (tasks.length === 0) {
-                        alert('Нет задач для тестирования. Создайте задачу сначала.');
-                        return;
-                    }
-                    
-                    const chatId = tasks[0].chat_id;
-                    console.log(`Testing notifications with chat_id: ${chatId}`);
-                    
-                    const testResponse = await apiCall('/api/bot/test', {
-                        method: 'POST',
-                        body: JSON.stringify({ chatId })
-                    });
+                // Используем тестовый chat_id для проверки
+                const chatId = '1164046471'; // Тестовый chat_id
+                
+                console.log(`Testing notifications with chat_id: ${chatId}`);
+                
+                const testResponse = await apiCall('/api/bot/test', {
+                    method: 'POST',
+                    body: JSON.stringify({ chatId })
+                });
 
-                    const result = await testResponse.json();
-                    
-                    if (testResponse.ok) {
-                        alert('Тестовое сообщение отправлено в Telegram!');
-                    } else {
-                        alert(`Ошибка при отправке: ${result.error}`);
-                        console.error('Test error details:', result);
-                    }
+                const result = await testResponse.json();
+                
+                if (testResponse.ok) {
+                    alert('✅ Тестовое сообщение отправлено в Telegram!');
                 } else {
-                    alert('Ошибка при получении задач для тестирования');
+                    alert(`❌ Ошибка при отправке: ${result.error}`);
+                    console.error('Test error details:', result);
                 }
             } catch (error) {
                 console.error('Error testing bot:', error);
-                alert('Ошибка при тестировании бота');
+                alert('❌ Ошибка при тестировании бота');
             }
         }
 
@@ -1286,14 +1120,13 @@
             // Обновить контент
             if (pageName === 'dashboard') {
                 loadDashboard();
-            } else if (pageName === 'employees') {
-                renderEmployees();
-            } else if (pageName === 'rating') {
-                loadRating();
+            // Раздел employees удален
             } else if (pageName === 'analytics') {
                 loadAnalytics();
             } else if (pageName === 'users') {
                 loadUsers();
+            } else if (pageName === 'admin') {
+                loadAdminUsers();
             } else if (pageName === 'settings') {
                 checkBotStatus();
                 loadSettings();
@@ -1317,26 +1150,30 @@
             document.getElementById('taskDeadline').value = now.toISOString().slice(0, 16);
         }
 
-        function openEmployeeModal() {
-            document.getElementById('employeeModal').classList.add('show');
-        }
+        // Функция openEmployeeModal удалена
 
         function closeModal(modalId) {
             document.getElementById(modalId).classList.remove('show');
             // Очистить формы
             if (modalId === 'taskModal') {
                 document.getElementById('taskForm').reset();
-            } else if (modalId === 'employeeModal') {
-                document.getElementById('employeeForm').reset();
             }
         }
 
-        // Обновление списка исполнителей
+        // Обновление списка исполнителей (упрощено)
         function updateAssigneeSelect() {
             const select = document.getElementById('taskAssignee');
             select.innerHTML = '<option value="">Выберите исполнителя</option>';
             
-            employees.forEach(employee => {
+            // Статичный список исполнителей
+            const staticEmployees = [
+                { id: 1, name: 'Анна Петрова', position: 'UX/UI Дизайнер' },
+                { id: 2, name: 'Алексей Смирнов', position: 'Frontend Developer' },
+                { id: 3, name: 'Мария Иванова', position: 'Project Manager' },
+                { id: 4, name: 'Дмитрий Козлов', position: 'Backend Developer' }
+            ];
+            
+            staticEmployees.forEach(employee => {
                 const option = document.createElement('option');
                 option.value = employee.id;
                 option.textContent = `${employee.name} (${employee.position})`;
@@ -1437,41 +1274,7 @@
             }).join('');
         }
 
-        // Рендеринг сотрудников
-        function renderEmployees() {
-            const container = document.getElementById('employeeList');
-            
-            if (employees.length === 0) {
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <svg viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M16 7c0-2.21-1.79-4-4-4S8 4.79 8 7s1.79 4 4 4 4-1.79 4-4zm-4 6c-2.67 0-8 1.34-8 4v3h16v-3c0-2.66-5.33-4-8-4z"/>
-                        </svg>
-                        <h3>Сотрудников нет</h3>
-                        <p>Добавьте первого сотрудника</p>
-                    </div>
-                `;
-                return;
-            }
-
-            container.innerHTML = employees.map(employee => `
-                <div class="employee-card">
-                    <div class="employee-info">
-                        <div class="employee-avatar">
-                            ${employee.name.charAt(0).toUpperCase()}
-                        </div>
-                        <div class="employee-details">
-                            <h4>${employee.name}</h4>
-                            <p>${employee.position} • ${employee.email}</p>
-                            <p style="color: #00796b; font-weight: 500;">${employee.username}</p>
-                        </div>
-                    </div>
-                    <button class="btn btn-danger" onclick="deleteEmployee(${employee.id})" style="padding: 8px 12px; font-size: 12px;">
-                        Удалить
-                    </button>
-                </div>
-            `).join('');
-        }
+        // Функция renderEmployees удалена
 
         // Обновление статистики
         function updateStats() {
@@ -1603,20 +1406,6 @@
             }
         }
 
-        // Функции для работы с рейтингом
-        async function loadRating() {
-            try {
-                const response = await apiCall('/api/rating');
-                if (response.ok) {
-                    const rating = await response.json();
-                    renderRating(rating);
-                } else {
-                    console.error('Failed to load rating');
-                }
-            } catch (error) {
-                console.error('Error loading rating:', error);
-            }
-        }
 
         // Функции для работы с аналитикой
         async function loadAnalytics() {
@@ -1729,57 +1518,8 @@
             `;
         }
 
-        function renderRating(rating) {
-            const container = document.getElementById('ratingList');
-            
-            if (rating.length === 0) {
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <svg viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-                        </svg>
-                        <h3>Рейтинг пуст</h3>
-                        <p>Выполните первые задачи чтобы появились баллы</p>
-                    </div>
-                `;
-                return;
-            }
 
-            container.innerHTML = rating.map((user, index) => {
-                const position = index + 1;
-                const topClass = position <= 3 ? `top-${position}` : '';
-                const medal = position === 1 ? '🥇' : position === 2 ? '🥈' : position === 3 ? '🥉' : '';
-                
-                return `
-                    <div class="rating-item ${topClass}">
-                        <div class="rating-position">${medal || position}</div>
-                        <div class="rating-info">
-                            <div class="rating-name">${user.first_name}${user.last_name ? ` ${user.last_name}` : ''}</div>
-                            <div class="rating-username">@${user.username || 'unknown'}</div>
-                        </div>
-                        <div class="rating-stats">
-                            <div>
-                                <div class="rating-points">💎 ${user.points}</div>
-                                <div style="font-size: 12px; color: #64748b;">баллов</div>
-                            </div>
-                            <div>
-                                <div class="rating-balance">💰 ${user.balance}</div>
-                                <div style="font-size: 12px; color: #64748b;">баланс</div>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            }).join('');
-        }
-
-        // Операции с сотрудниками
-        function deleteEmployee(id) {
-            if (confirm('Вы уверены, что хотите удалить этого сотрудника?')) {
-                employees = employees.filter(emp => emp.id !== id);
-                renderEmployees();
-                updateAssigneeSelect();
-            }
-        }
+        // Функции для сотрудников удалены
 
         // Обработчики форм
         document.getElementById('taskForm').addEventListener('submit', function(e) {
@@ -1812,37 +1552,7 @@
             closeModal('taskModal');
         });
 
-        document.getElementById('employeeForm').addEventListener('submit', function(e) {
-            e.preventDefault();
-            
-            const name = document.getElementById('employeeName').value;
-            const email = document.getElementById('employeeEmail').value;
-            const position = document.getElementById('employeePosition').value;
-            let username = document.getElementById('employeeUsername').value;
-
-            if (!name || !email) {
-                alert('Пожалуйста, заполните все обязательные поля');
-                return;
-            }
-
-            // Добавляем @ если его нет
-            if (username && !username.startsWith('@')) {
-                username = '@' + username;
-            }
-
-            const newEmployee = {
-                id: nextEmployeeId++,
-                name,
-                email,
-                position: position || 'Сотрудник',
-                username: username || `@${email.split('@')[0]}`
-            };
-
-            employees.push(newEmployee);
-            renderEmployees();
-            updateAssigneeSelect();
-            closeModal('employeeModal');
-        });
+        // Обработчик формы employeeForm удален
 
         // Функция редактирования задачи
         function editTask(taskId) {
@@ -1921,31 +1631,22 @@
             document.getElementById('sidebar').classList.toggle('mobile-open');
         }
 
-        // Функции для работы с пользователем
+        // Функции для работы с пользователем (без авторизации)
         async function loadUserInfo() {
-            try {
-                const response = await apiCall('/api/user');
-                if (response.ok) {
-                    const user = await response.json();
-                    displayUserInfo(user);
-                    // Скрываем loader и показываем основной контент
-                    document.getElementById('authLoader').style.display = 'none';
-                    document.getElementById('mainContent').classList.add('authenticated');
-                    return true;
-                } else if (response.status === 401) {
-                    // Не авторизован, перенаправляем на логин
-                    window.location.href = '/login';
-                    return false;
-                } else {
-                    console.error('Failed to load user info');
-                    window.location.href = '/login';
-                    return false;
-                }
-            } catch (error) {
-                console.error('Error loading user info:', error);
-                window.location.href = '/login';
-                return false;
+            // Убрана проверка авторизации - показываем фиктивного пользователя
+            const user = {
+                name: 'Пользователь',
+                email: 'user@taskmanager.local',
+                role: 'admin'
+            };
+            displayUserInfo(user);
+            
+            // Показываем админ раздел если пользователь админ
+            if (user.role === 'admin') {
+                document.getElementById('adminNavItem').style.display = 'flex';
             }
+            
+            return true;
         }
 
         function displayUserInfo(user) {
@@ -1971,23 +1672,62 @@
         }
 
         function logout() {
-            if (confirm('Вы уверены, что хотите выйти?')) {
-                window.location.href = '/api/logout';
+            if (confirm('Вы уверены, что хотите перезагрузить страницу?')) {
+                window.location.reload();
             }
         }
 
         // Функции для управления пользователями
         async function loadUsers() {
             try {
-                const response = await apiCall('/api/users/roles');
-                if (response.ok) {
-                    const users = await response.json();
-                    renderUsers(users);
-                } else {
-                    console.error('Failed to load users');
+                const response = await fetch('/api/admin/users');
+                if (!response.ok) {
+                    throw new Error('Failed to fetch users');
                 }
+                const users = await response.json();
+                renderUsers(users);
             } catch (error) {
                 console.error('Error loading users:', error);
+                renderUsers([]);
+            }
+        }
+
+        // Функция для обновления списка пользователей
+        async function refreshUsers() {
+            try {
+                showNotification('Обновление списка пользователей...', 'info');
+                
+                const response = await fetch('/api/admin/users/refresh', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to refresh users');
+                }
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    renderUsers(result.users);
+                    let message = `Список обновлен! `;
+                    if (result.total_chat_members) {
+                        message += `В чате ${result.chat_id}: ${result.total_chat_members} участников, ${result.users_in_db} взаимодействовали с ботом`;
+                    } else {
+                        message += `Найдено ${result.users.length} пользователей из чата ${result.chat_id}`;
+                    }
+                    if (result.warning) {
+                        message += ` (${result.warning})`;
+                    }
+                    showNotification(message, 'success');
+                } else {
+                    throw new Error(result.error || 'Unknown error');
+                }
+            } catch (error) {
+                console.error('Error refreshing users:', error);
+                showNotification('Ошибка при обновлении списка пользователей: ' + error.message, 'error');
             }
         }
 
@@ -2057,11 +1797,30 @@
         // Функции для работы с настройками
         async function loadSettings() {
             try {
-                const response = await apiCall('/api/settings');
+                const response = await fetch('/api/settings');
                 if (response.ok) {
                     const settings = await response.json();
                     applySettings(settings);
                 }
+                
+                // Добавляем обработчики событий для кнопок настроек после загрузки
+                setTimeout(() => {
+                    const saveBtn = document.getElementById('saveWorkChatId');
+                    const checkBtn = document.getElementById('checkWorkChatId');
+                    
+                    if (saveBtn && !saveBtn.hasAttribute('data-listener')) {
+                        saveBtn.addEventListener('click', saveWorkChatId);
+                        saveBtn.setAttribute('data-listener', 'true');
+                        console.log('Save button listener added');
+                    }
+                    
+                    if (checkBtn && !checkBtn.hasAttribute('data-listener')) {
+                        checkBtn.addEventListener('click', checkWorkChatId);
+                        checkBtn.setAttribute('data-listener', 'true');
+                        console.log('Check button listener added');
+                    }
+                }, 100);
+                
             } catch (error) {
                 console.error('Error loading settings:', error);
             }
@@ -2071,6 +1830,8 @@
             const workChatId = settings.find(s => s.key === 'work_chat_id');
             if (workChatId && workChatId.value) {
                 document.getElementById('workChatId').value = workChatId.value;
+                // Автоматически проверяем чат при загрузке настроек
+                checkWorkChatId();
             }
         }
 
@@ -2078,24 +1839,223 @@
             const chatId = document.getElementById('workChatId').value.trim();
             
             if (!chatId) {
-                alert('Введите Chat ID');
+                showNotification('Введите Chat ID', 'error');
                 return;
             }
 
             try {
-                const response = await apiCall('/api/settings/work_chat_id', {
+                const response = await fetch('/api/settings/work_chat_id', {
                     method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
                     body: JSON.stringify({ value: chatId })
                 });
 
                 if (response.ok) {
-                    alert('Chat ID сохранен!');
+                    showNotification('Chat ID сохранен!', 'success');
+                    // Проверяем информацию о чате после сохранения
+                    await checkWorkChatId();
                 } else {
-                    alert('Ошибка при сохранении Chat ID');
+                    showNotification('Ошибка при сохранении Chat ID', 'error');
                 }
             } catch (error) {
                 console.error('Error saving chat ID:', error);
-                alert('Ошибка при сохранении Chat ID');
+                showNotification('Ошибка при сохранении Chat ID', 'error');
+            }
+        }
+
+        async function checkWorkChatId() {
+            const chatId = document.getElementById('workChatId').value.trim();
+            const chatInfoDiv = document.getElementById('chatInfo');
+            
+            if (!chatId) {
+                chatInfoDiv.style.display = 'none';
+                return;
+            }
+
+            try {
+                showNotification('Проверяем информацию о чате...', 'info');
+                
+                const response = await fetch('/api/admin/chat/info');
+                
+                if (!response.ok) {
+                    throw new Error('Failed to get chat info');
+                }
+                
+                const result = await response.json();
+                
+                if (result.success && result.chat) {
+                    const chat = result.chat;
+                    chatInfoDiv.innerHTML = `
+                        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+                            <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16" style="color: #4caf50;">
+                                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                            </svg>
+                            <strong style="color: #2d5016;">Чат подключен успешно!</strong>
+                        </div>
+                        <div style="font-size: 14px; line-height: 1.4;">
+                            <div><strong>Название:</strong> ${chat.title || 'Не указано'}</div>
+                            <div><strong>ID:</strong> ${chat.id}</div>
+                            <div><strong>Тип:</strong> ${chat.type}</div>
+                            <div><strong>Участников:</strong> ${chat.members_count}</div>
+                            ${chat.description ? `<div><strong>Описание:</strong> ${chat.description}</div>` : ''}
+                        </div>
+                    `;
+                    chatInfoDiv.style.display = 'block';
+                    chatInfoDiv.style.background = '#e8f5e8';
+                    chatInfoDiv.style.border = '1px solid #4caf50';
+                    
+                    showNotification(`Чат "${chat.title}" подключен! Участников: ${chat.members_count}`, 'success');
+                } else {
+                    throw new Error(result.error || 'Unknown error');
+                }
+            } catch (error) {
+                console.error('Error checking chat info:', error);
+                chatInfoDiv.innerHTML = `
+                    <div style="display: flex; align-items: center; gap: 10px; color: #d32f2f;">
+                        <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                        </svg>
+                        <strong>Ошибка подключения к чату</strong>
+                    </div>
+                    <div style="font-size: 14px; margin-top: 5px; color: #666;">
+                        ${error.message || 'Проверьте Chat ID и убедитесь что бот добавлен в группу'}
+                    </div>
+                `;
+                chatInfoDiv.style.display = 'block';
+                chatInfoDiv.style.background = '#ffeaea';
+                chatInfoDiv.style.border = '1px solid #d32f2f';
+                
+                showNotification('Ошибка при проверке чата: ' + error.message, 'error');
+            }
+        }
+
+        // Функции для админ панели
+        async function loadAdminUsers() {
+            try {
+                const response = await apiCall('/api/admin/users');
+                if (response.ok) {
+                    const users = await response.json();
+                    renderAdminUsers(users);
+                } else {
+                    console.error('Failed to load admin users');
+                }
+            } catch (error) {
+                console.error('Error loading admin users:', error);
+            }
+        }
+
+        function renderAdminUsers(users) {
+            const container = document.getElementById('adminUsersList');
+            
+            if (users.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 2c2.21 0 4 1.79 4 4 0 2.21-1.59 3.92-3.75 4l.75.75 2.25 2.25c.39.39.39 1.02 0 1.41s-1.02.39-1.41 0L11.59 12.16c-.59.13-1.2.34-1.8.34C7.58 12.5 6 10.92 6 9s1.58-3.5 3.79-3.5zM10 7c-.55 0-1 .45-1 1s.45 1 1 1 1-.45 1-1-.45-1-1-1z"/>
+                        </svg>
+                        <h3>Пользователей пока нет</h3>
+                        <p>Пользователи появятся после отправки команд боту @workprobusinessbot<br>
+                        Токен: 7539351581:AAGn9-Q6xAhfB99ZMm8Ym3Z7HauG8yuzuzg</p>
+                    </div>
+                `;
+                return;
+            }
+
+            // Статистика сверху
+            const totalUsers = users.length;
+            const adminCount = users.filter(u => u.role === 'admin').length;
+            const managerCount = users.filter(u => u.role === 'manager').length;
+            const executorCount = users.filter(u => u.role === 'executor').length;
+            const totalPoints = users.reduce((sum, user) => sum + (user.points || 0), 0);
+
+            container.innerHTML = `
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 25px;">
+                    <div style="background: #f8faf9; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; text-align: center;">
+                        <div style="font-size: 1.5rem; font-weight: 600; color: #00796b;">${totalUsers}</div>
+                        <div style="font-size: 12px; color: #64748b;">Всего пользователей</div>
+                    </div>
+                    <div style="background: #f8faf9; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; text-align: center;">
+                        <div style="font-size: 1.5rem; font-weight: 600; color: #f44336;">${adminCount}</div>
+                        <div style="font-size: 12px; color: #64748b;">Администраторов</div>
+                    </div>
+                    <div style="background: #f8faf9; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; text-align: center;">
+                        <div style="font-size: 1.5rem; font-weight: 600; color: #ff9800;">${managerCount}</div>
+                        <div style="font-size: 12px; color: #64748b;">Менеджеров</div>
+                    </div>
+                    <div style="background: #f8faf9; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; text-align: center;">
+                        <div style="font-size: 1.5rem; font-weight: 600; color: #4caf50;">${executorCount}</div>
+                        <div style="font-size: 12px; color: #64748b;">Исполнителей</div>
+                    </div>
+                    <div style="background: #f8faf9; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; text-align: center;">
+                        <div style="font-size: 1.5rem; font-weight: 600; color: #9c27b0;">${totalPoints}</div>
+                        <div style="font-size: 12px; color: #64748b;">Общий рейтинг</div>
+                    </div>
+                </div>
+                ${users.map(user => {
+                    const roleColor = user.role === 'admin' ? '#f44336' : user.role === 'manager' ? '#ff9800' : '#4caf50';
+                    const roleName = user.role === 'admin' ? '🔴 Администратор' : user.role === 'manager' ? '🟠 Менеджер' : '🟢 Исполнитель';
+                    const createdDate = user.created_at ? new Date(user.created_at).toLocaleDateString('ru-RU') : 'Неизвестно';
+                    const activationStatus = user.username ? '✅ Активирован' : '⏳ Ожидает активации';
+                    
+                    return `
+                        <div class="employee-card" style="margin-bottom: 15px; border-left: 4px solid ${roleColor};">
+                            <div class="employee-info">
+                                <div class="employee-avatar" style="background: ${roleColor};">
+                                    ${(user.first_name || user.username || 'U').charAt(0).toUpperCase()}
+                                </div>
+                                <div class="employee-details">
+                                    <h4>${user.first_name || 'Неизвестно'}${user.last_name ? ` ${user.last_name}` : ''}</h4>
+                                    <p>@${user.username || 'unknown'} • Telegram ID: ${user.user_id}</p>
+                                    <p style="color: ${roleColor}; font-weight: 600;">${roleName}</p>
+                                    <p style="font-size: 12px; color: #64748b;">
+                                        📅 Зарегистрирован: ${createdDate} • ${activationStatus}
+                                    </p>
+                                </div>
+                            </div>
+                            <div style="display: flex; gap: 20px; align-items: center;">
+                                <div style="text-align: center;">
+                                    <div style="font-size: 1.2rem; font-weight: 600; color: #00796b;">${user.points || 0}</div>
+                                    <div style="font-size: 12px; color: #64748b;">баллов</div>
+                                </div>
+                                <div style="text-align: center;">
+                                    <div style="font-size: 1.2rem; font-weight: 600; color: #2196f3;">${user.balance || '0.00'}</div>
+                                    <div style="font-size: 12px; color: #64748b;">баланс</div>
+                                </div>
+                                <div style="text-align: center;">
+                                    <button class="btn btn-secondary" onclick="promoteToAdmin('${user.user_id}')" style="padding: 4px 8px; font-size: 12px;">
+                                        👑 Сделать админом
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
+            `;
+        }
+
+        // Функция для повышения пользователя до администратора
+        async function promoteToAdmin(userId) {
+            if (!confirm('Вы уверены, что хотите назначить этого пользователя администратором?')) {
+                return;
+            }
+
+            try {
+                const response = await apiCall(`/api/users/${userId}/role`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ role: 'admin' })
+                });
+
+                if (response.ok) {
+                    alert('Пользователь назначен администратором!');
+                    loadAdminUsers(); // Перезагружаем список
+                } else {
+                    alert('Ошибка при назначении администратора');
+                }
+            } catch (error) {
+                console.error('Error promoting user to admin:', error);
+                alert('Ошибка при назначении администратора');
             }
         }
 
@@ -2107,11 +2067,9 @@
                 await loadDashboard();
                 
                 // Обработчики для управления ботом
-                document.getElementById('saveBotToken').addEventListener('click', saveBotToken);
                 document.getElementById('stopBot').addEventListener('click', stopBot);
                 document.getElementById('testBot').addEventListener('click', testBotNotifications);
                 document.getElementById('refreshBotStatus').addEventListener('click', checkBotStatus);
-                document.getElementById('saveWorkChatId').addEventListener('click', saveWorkChatId);
                 
                 // Автоматическое обновление каждые 30 секунд
                 setInterval(async () => {
