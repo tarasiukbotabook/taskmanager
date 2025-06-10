@@ -73,8 +73,8 @@ class SQLiteDatabase extends DatabaseInterface {
         return this.dbModule.deleteTask(taskId);
     }
     
-    async updateTask(taskId, title, description, deadline) {
-        return this.dbModule.updateTask(taskId, title, description, deadline);
+    async updateTask(taskId, title, description, deadline, assigneeUsername = null) {
+        return this.dbModule.updateTask(taskId, title, description, deadline, assigneeUsername);
     }
     
     async submitForReview(taskId, userId) {
@@ -99,6 +99,14 @@ class SQLiteDatabase extends DatabaseInterface {
     
     async getTaskPerformanceMetrics() {
         return this.dbModule.getTaskPerformanceMetrics();
+    }
+    
+    async addTaskHistory(taskId, fieldName, oldValue, newValue, changedByUserId) {
+        return this.dbModule.addTaskHistory(taskId, fieldName, oldValue, newValue, changedByUserId);
+    }
+    
+    async getTaskHistory(taskId) {
+        return this.dbModule.getTaskHistory(taskId);
     }
     
     // ==================== НАСТРОЙКИ ====================

@@ -1,0 +1,9 @@
+🗄️  Initializing SQLITE database...
+📄 SQLite database wrapper initialized
+✅ SQLite database initialized
+🗄️  Unified database interface initialized
+🚀 Minimal server running on http://127.0.0.1:3001
+📊 Health: http://127.0.0.1:3001/api/health
+Update notification sent for task 107
+Update notification sent for task 110
+Update notification sent for task 110

@@ -165,7 +165,7 @@ const server = http.createServer((req, res) => {
             req.on('end', async () => {
                 try {
                     const updateData = JSON.parse(body);
-                    const { title, description, deadline, status } = updateData;
+                    const { title, description, deadline, status, assignee } = updateData;
                     
                     if (status) {
                         // Обновление статуса
@@ -192,10 +192,36 @@ const server = http.createServer((req, res) => {
                             res.end(JSON.stringify({ error: 'Task not found' }));
                         }
                     } else {
+                        // Получаем старые данные задачи для сравнения
+                        const tasks = await db.getAllTasks();
+                        const oldTask = tasks.find(t => t.id == taskId);
+                        
                         // Обновление данных задачи
-                        const result = await db.updateTask(taskId, title, description, deadline);
+                        const result = await db.updateTask(taskId, title, description, deadline, assignee);
                         
                         if (result > 0) {
+                            // Формируем объект изменений для уведомления
+                            const changes = {};
+                            if (oldTask) {
+                                if (title && title !== oldTask.title) {
+                                    changes.title = title;
+                                }
+                                if (description !== oldTask.description) {
+                                    changes.description = description;
+                                }
+                                if (deadline !== oldTask.deadline) {
+                                    changes.deadline = deadline;
+                                }
+                                if (assignee && assignee !== oldTask.assignee_username) {
+                                    changes.assignee = assignee;
+                                }
+                                
+                                // Отправляем уведомление только если есть изменения
+                                if (Object.keys(changes).length > 0) {
+                                    await sendTaskUpdateNotification(taskId, changes, db);
+                                }
+                            }
+                            
                             res.writeHead(200, { 'Content-Type': 'application/json' });
                             res.end(JSON.stringify({ success: true, message: 'Task updated' }));
                         } else {
@@ -242,6 +268,21 @@ const server = http.createServer((req, res) => {
                     console.error('Stats API error:', error);
                     res.writeHead(500, { 'Content-Type': 'application/json' });
                     res.end(JSON.stringify({ error: 'Failed to fetch stats' }));
+                }
+            })();
+        } else if (pathname.startsWith('/api/tasks/') && pathname.endsWith('/history') && req.method === 'GET') {
+            // API для получения истории изменений задачи
+            const taskId = pathname.split('/api/tasks/')[1].split('/history')[0];
+            
+            (async () => {
+                try {
+                    const history = await db.getTaskHistory(taskId);
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify(history || []));
+                } catch (error) {
+                    console.error('Task history API error:', error);
+                    res.writeHead(500, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'Failed to fetch task history' }));
                 }
             })();
         } else if (pathname.startsWith('/api/tasks/') && pathname.endsWith('/approve') && req.method === 'POST') {
@@ -1319,14 +1360,11 @@ async function handleTaskCommand(message, botToken, db) {
         
         // Проверяем, что это рабочий чат
         const workChatId = await db.getSetting('work_chat_id');
-        console.log(`Task command in chat ${chatId}, work chat is ${workChatId}`);
         
         if (!workChatId || workChatId.toString() !== chatId.toString()) {
-            console.log(`Command rejected: not in work chat. Current: ${chatId}, Work: ${workChatId}`);
             await sendMessage(botToken, chatId, `❌ Команды задач доступны только в рабочем чате.
             
-Текущий чат: ${chatId}
-Рабочий чат: ${workChatId || 'не настроен'}`);
+Попробуйте команду /chatinfo для диагностики`);
             return;
         }
         
@@ -1368,6 +1406,9 @@ async function handleTaskCommand(message, botToken, db) {
             chatId,
             userId
         );
+        
+        // НЕ отправляем дублирующее уведомление для телеграм бота, 
+        // так как само сообщение о создании уже является уведомлением
         
         // Формируем ответ
         const creatorName = message.from.first_name + (message.from.last_name ? ` ${message.from.last_name}` : '');
@@ -1767,6 +1808,62 @@ ID: #${task.id}`;
         
     } catch (error) {
         console.error('Error sending rejection notification:', error);
+    }
+}
+
+// Функция отправки уведомления об обновлении задачи
+async function sendTaskUpdateNotification(taskId, changes, db) {
+    try {
+        // Получаем информацию о задаче
+        const tasks = await db.getAllTasks();
+        const task = tasks.find(t => t.id == taskId);
+        
+        if (!task) {
+            console.log('Task not found for update notification');
+            return;
+        }
+
+        // Получаем настройки для отправки уведомлений
+        const botToken = await db.getSetting('bot_token') || process.env.BOT_TOKEN;
+        const workChatId = await db.getSetting('work_chat_id');
+        
+        if (!botToken || !workChatId) {
+            console.log('Bot token or work chat not configured');
+            return;
+        }
+
+        // Формируем список изменений
+        let changesText = '';
+        if (changes.title) {
+            changesText += `📝 Название: ${changes.title}\n`;
+        }
+        if (changes.description !== undefined) {
+            changesText += `📄 Описание: ${changes.description || 'удалено'}\n`;
+        }
+        if (changes.assignee) {
+            changesText += `👤 Исполнитель: ${changes.assignee}\n`;
+        }
+        if (changes.deadline !== undefined) {
+            changesText += `📅 Дедлайн: ${changes.deadline || 'удален'}\n`;
+        }
+
+        // Формируем сообщение
+        const message = `✏️ Задача обновлена
+
+📋 Задача: ${task.title}
+ID: #${task.id}
+
+📝 Изменения:
+${changesText}
+
+👤 Исполнитель: ${task.assignee_username}`;
+
+        // Отправляем уведомление в рабочий чат
+        await sendMessage(botToken, workChatId, message);
+        console.log(`Update notification sent for task ${taskId}`);
+        
+    } catch (error) {
+        console.error('Error sending update notification:', error);
     }
 }
 

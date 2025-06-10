@@ -402,6 +402,99 @@
         </div>
     </div>
 
+    <!-- Модальное окно для детального просмотра задачи -->
+    <div id="taskDetailsModal" class="modal">
+        <div class="modal-content modal-lg">
+            <div class="modal-header">
+                <h3 class="modal-title" id="taskDetailsTitle">Детали задачи</h3>
+                <div class="modal-header-actions">
+                    <button type="button" id="saveTaskChanges" class="btn btn-success btn-sm" style="display: none;">
+                        💾 Сохранить
+                    </button>
+                    <button class="close-btn" onclick="ModalHelper.hideModal('taskDetailsModal')">&times;</button>
+                </div>
+            </div>
+            <div class="modal-body">
+                <div id="taskDetailsContent">
+                    <div class="task-detail-section">
+                        <h4>Основная информация</h4>
+                        <div class="detail-grid">
+                            <div class="detail-item">
+                                <label>Название:</label>
+                                <div class="editable-field">
+                                    <span id="detailTitle" class="editable-text">-</span>
+                                    <input type="text" id="editTitle" class="editable-input" style="display: none;">
+                                </div>
+                            </div>
+                            <div class="detail-item">
+                                <label>Статус:</label>
+                                <span id="detailStatus" class="task-status">-</span>
+                            </div>
+                            <div class="detail-item">
+                                <label>Исполнитель:</label>
+                                <div class="editable-field">
+                                    <span id="detailAssignee" class="editable-text">-</span>
+                                    <select id="editAssignee" class="editable-input" style="display: none;">
+                                        <option value="">Выберите исполнителя...</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="detail-item">
+                                <label>Дедлайн:</label>
+                                <div class="editable-field">
+                                    <span id="detailDeadline" class="editable-text">-</span>
+                                    <input type="datetime-local" id="editDeadline" class="editable-input" style="display: none;">
+                                </div>
+                            </div>
+                            <div class="detail-item">
+                                <label>Время выполнения:</label>
+                                <div class="editable-field">
+                                    <span id="detailEstimatedTime" class="editable-text">-</span>
+                                    <input type="number" id="editEstimatedTime" class="editable-input" style="display: none;" step="0.5" min="0">
+                                </div>
+                            </div>
+                            <div class="detail-item">
+                                <label>Создано:</label>
+                                <span id="detailCreatedAt">-</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="task-detail-section">
+                        <h4>Описание</h4>
+                        <div class="editable-field">
+                            <div class="detail-description editable-text" id="detailDescription">
+                                <p>Описание отсутствует</p>
+                            </div>
+                            <textarea id="editDescription" class="editable-input" style="display: none;" rows="4"></textarea>
+                        </div>
+                    </div>
+                    
+                    <div class="task-detail-section" id="detailCommentsSection" style="display: none;">
+                        <h4>Комментарии к проверке</h4>
+                        <div class="detail-comments" id="detailComments">
+                            -
+                        </div>
+                    </div>
+                    
+                    <div class="task-detail-section" id="detailHistorySection" style="display: none;">
+                        <h4>История изменений</h4>
+                        <div class="detail-history" id="detailHistory">
+                            <p class="text-light">История изменений пуста</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" onclick="ModalHelper.hideModal('taskDetailsModal')">
+                        Закрыть
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Контейнер для уведомлений -->
     <div id="notificationsContainer" class="notifications-container"></div>
 

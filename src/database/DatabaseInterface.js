@@ -124,9 +124,10 @@ class DatabaseInterface {
      * @param {string} title - Новое название
      * @param {string} description - Новое описание
      * @param {string} deadline - Новый дедлайн
+     * @param {string} assigneeUsername - Новый исполнитель (optional)
      * @returns {Promise<number>} Количество обновленных записей
      */
-    async updateTask(taskId, title, description, deadline) {
+    async updateTask(taskId, title, description, deadline, assigneeUsername = null) {
         throw new Error('Method updateTask must be implemented');
     }
     
@@ -185,6 +186,28 @@ class DatabaseInterface {
      */
     async getTaskPerformanceMetrics() {
         throw new Error('Method getTaskPerformanceMetrics must be implemented');
+    }
+    
+    /**
+     * Добавить запись в историю изменений задачи
+     * @param {string} taskId - ID задачи
+     * @param {string} fieldName - Название поля
+     * @param {string} oldValue - Старое значение
+     * @param {string} newValue - Новое значение
+     * @param {string} changedByUserId - ID пользователя
+     * @returns {Promise<number>} ID записи
+     */
+    async addTaskHistory(taskId, fieldName, oldValue, newValue, changedByUserId) {
+        throw new Error('Method addTaskHistory must be implemented');
+    }
+    
+    /**
+     * Получить историю изменений задачи
+     * @param {string} taskId - ID задачи
+     * @returns {Promise<Array>} История изменений
+     */
+    async getTaskHistory(taskId) {
+        throw new Error('Method getTaskHistory must be implemented');
     }
     
     // ==================== НАСТРОЙКИ ====================

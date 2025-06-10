@@ -124,6 +124,16 @@ const TasksAPI = {
             throw new Error(errorData.error || 'Failed to reject task');
         }
         return response.json();
+    },
+
+    // Получить историю изменений задачи
+    async getHistory(taskId) {
+        const response = await apiCall(`/tasks/${taskId}/history`);
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+            throw new Error(errorData.error || 'Failed to get task history');
+        }
+        return response.json();
     }
 };
 

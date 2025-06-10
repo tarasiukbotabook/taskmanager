@@ -78,7 +78,7 @@ const TasksModule = {
         return `
             <div class="task-card" data-task-id="${task.id}">
                 <div class="task-header">
-                    <h3 class="task-title">${this.escapeHtml(task.title)}</h3>
+                    <h3 class="task-title" onclick="TasksModule.showTaskDetails('${task.id}')">${this.escapeHtml(task.title)}</h3>
                     <span class="task-status ${statusClass}">${statusText}</span>
                 </div>
                 
@@ -102,9 +102,6 @@ const TasksModule = {
     // Отрисовка действий для задачи
     renderTaskActions(task) {
         const actions = [];
-        
-        // Базовые действия
-        actions.push(`<button class="btn btn-sm btn-secondary" onclick="TasksModule.editTask('${task.id}')">Изменить</button>`);
         
         // Действия в зависимости от статуса
         switch (task.status) {
@@ -231,7 +228,7 @@ const TasksModule = {
         try {
             if (taskId) {
                 await TasksAPI.update(taskId, taskData);
-                this.showNotification('Задача обновлена', 'success');
+                this.showNotification('Задача обновлена. Уведомление отправлено в Telegram.', 'success');
             } else {
                 const result = await TasksAPI.create(taskData);
                 this.showNotification('Задача создана. Уведомление отправлено исполнителю.', 'success');
@@ -430,5 +427,388 @@ const TasksModule = {
     showNotification(message, type = 'info') {
         // Используем красивые уведомления
         NotificationHelper.show(message, type);
+    },
+    
+    // Показать детальную информацию о задаче с inline-редактированием
+    async showTaskDetails(taskId) {
+        const task = this.tasks.find(t => t.id == taskId);
+        if (!task) {
+            this.showNotification('Задача не найдена', 'error');
+            return;
+        }
+        
+        // Сохраняем оригинальные данные для отслеживания изменений
+        this.originalTaskData = {
+            title: task.title || '',
+            description: task.description || '',
+            deadline: task.deadline || '',
+            estimated_time: task.estimated_time || '',
+            assignee_username: task.assignee_username || ''
+        };
+        this.currentTaskId = taskId;
+        
+        // Сбрасываем флаг setup для корректной привязки событий
+        this.inlineEditingSetup = false;
+        
+        // Заполняем модальное окно данными задачи
+        document.getElementById('taskDetailsTitle').textContent = `Задача #${task.id}`;
+        
+        // Заполняем редактируемые поля
+        document.getElementById('detailTitle').textContent = task.title || '-';
+        document.getElementById('editTitle').value = task.title || '';
+        
+        // Устанавливаем статус с правильным классом
+        const statusElement = document.getElementById('detailStatus');
+        const statusClass = this.getStatusClass(task.status);
+        const statusText = this.getStatusText(task.status);
+        statusElement.className = `task-status ${statusClass}`;
+        statusElement.textContent = statusText;
+        
+        document.getElementById('detailAssignee').textContent = task.assignee_username || 'Не назначен';
+        document.getElementById('detailDeadline').textContent = this.formatDate(task.deadline);
+        document.getElementById('editDeadline').value = task.deadline || '';
+        
+        document.getElementById('detailEstimatedTime').textContent = task.estimated_time ? `${task.estimated_time} ч` : 'Не указано';
+        document.getElementById('editEstimatedTime').value = task.estimated_time || '';
+        
+        document.getElementById('detailCreatedAt').textContent = this.formatDate(task.created_at);
+        
+        // Описание
+        const descriptionElement = document.getElementById('detailDescription');
+        const editDescriptionElement = document.getElementById('editDescription');
+        if (task.description && task.description.trim()) {
+            descriptionElement.innerHTML = this.escapeHtml(task.description).replace(/\n/g, '<br>');
+        } else {
+            descriptionElement.innerHTML = '<p class="text-light">Описание отсутствует</p>';
+        }
+        editDescriptionElement.value = task.description || '';
+        
+        // Загружаем пользователей для select исполнителя
+        await this.loadUsersForAssigneeSelect();
+        document.getElementById('editAssignee').value = task.assignee_username || '';
+        
+        // Комментарии к проверке
+        const commentsSection = document.getElementById('detailCommentsSection');
+        const commentsElement = document.getElementById('detailComments');
+        if (task.review_comment && task.review_comment.trim()) {
+            commentsSection.style.display = 'block';
+            commentsElement.textContent = task.review_comment;
+        } else {
+            commentsSection.style.display = 'none';
+        }
+        
+        // Загружаем и показываем историю изменений
+        await this.loadTaskHistory(taskId);
+        
+        // Скрываем кнопку сохранения по умолчанию
+        document.getElementById('saveTaskChanges').style.display = 'none';
+        
+        // Настраиваем inline-редактирование
+        this.setupInlineEditing();
+        
+        // Показываем модальное окно
+        this.showModal('taskDetailsModal');
+    },
+    
+    // Загрузка пользователей для select исполнителя в детальном просмотре
+    async loadUsersForAssigneeSelect() {
+        try {
+            const users = await UsersAPI.getAll();
+            const select = document.getElementById('editAssignee');
+            
+            // Очищаем select
+            select.innerHTML = '<option value="">Выберите исполнителя...</option>';
+            
+            // Добавляем пользователей
+            users.forEach(user => {
+                const option = document.createElement('option');
+                const username = user.username ? `@${user.username.replace('@', '')}` : user.first_name;
+                option.value = username;
+                option.textContent = `${user.first_name || 'Без имени'} (${username})`;
+                select.appendChild(option);
+            });
+        } catch (error) {
+            console.error('Ошибка загрузки пользователей для назначения:', error);
+        }
+    },
+    
+    // Настройка inline-редактирования
+    setupInlineEditing() {
+        // Используем делегирование событий и проверяем, не привязаны ли уже обработчики
+        if (this.inlineEditingSetup) return;
+        this.inlineEditingSetup = true;
+        
+        // Обработчики для заголовка
+        const titleText = document.getElementById('detailTitle');
+        const titleInput = document.getElementById('editTitle');
+        
+        titleText.onclick = () => this.startEdit('title');
+        titleInput.onblur = () => this.endEdit('title');
+        titleInput.onkeydown = (e) => {
+            if (e.key === 'Enter') {
+                titleInput.blur();
+            } else if (e.key === 'Escape') {
+                this.cancelEdit('title');
+            }
+        };
+        titleInput.oninput = () => this.checkForChanges();
+        
+        // Обработчики для исполнителя
+        const assigneeText = document.getElementById('detailAssignee');
+        const assigneeSelect = document.getElementById('editAssignee');
+        
+        assigneeText.onclick = () => this.startEdit('assignee');
+        assigneeSelect.onblur = () => this.endEdit('assignee');
+        assigneeSelect.onchange = () => {
+            this.endEdit('assignee');
+            this.checkForChanges();
+        };
+        
+        // Обработчики для дедлайна
+        const deadlineText = document.getElementById('detailDeadline');
+        const deadlineInput = document.getElementById('editDeadline');
+        
+        deadlineText.onclick = () => this.startEdit('deadline');
+        deadlineInput.onblur = () => this.endEdit('deadline');
+        deadlineInput.onchange = () => this.checkForChanges();
+        
+        // Обработчики для времени выполнения
+        const timeText = document.getElementById('detailEstimatedTime');
+        const timeInput = document.getElementById('editEstimatedTime');
+        
+        timeText.onclick = () => this.startEdit('estimatedTime');
+        timeInput.onblur = () => this.endEdit('estimatedTime');
+        timeInput.oninput = () => this.checkForChanges();
+        
+        // Обработчики для описания
+        const descriptionText = document.getElementById('detailDescription');
+        const descriptionTextarea = document.getElementById('editDescription');
+        
+        descriptionText.onclick = () => this.startEdit('description');
+        descriptionTextarea.onblur = () => this.endEdit('description');
+        descriptionTextarea.oninput = () => this.checkForChanges();
+        
+        // Обработчик кнопки сохранения
+        const saveButton = document.getElementById('saveTaskChanges');
+        saveButton.onclick = () => this.saveTaskChanges();
+    },
+    
+    // Начать редактирование поля
+    startEdit(field) {
+        const textElement = document.getElementById(`detail${field.charAt(0).toUpperCase() + field.slice(1)}`);
+        const inputElement = document.getElementById(`edit${field.charAt(0).toUpperCase() + field.slice(1)}`);
+        
+        // Особая обработка для времени выполнения
+        if (field === 'estimatedTime') {
+            const textEl = document.getElementById('detailEstimatedTime');
+            const inputEl = document.getElementById('editEstimatedTime');
+            textEl.style.display = 'none';
+            inputEl.style.display = 'block';
+            inputEl.focus();
+            return;
+        }
+        
+        textElement.style.display = 'none';
+        inputElement.style.display = 'block';
+        inputElement.focus();
+        
+        if (field === 'description') {
+            // Для textarea устанавливаем курсор в конец
+            inputElement.setSelectionRange(inputElement.value.length, inputElement.value.length);
+        } else if (field === 'title') {
+            // Для заголовка выделяем весь текст
+            inputElement.select();
+        }
+    },
+    
+    // Закончить редактирование поля
+    endEdit(field) {
+        const textElement = document.getElementById(`detail${field.charAt(0).toUpperCase() + field.slice(1)}`);
+        const inputElement = document.getElementById(`edit${field.charAt(0).toUpperCase() + field.slice(1)}`);
+        
+        // Особая обработка для разных полей
+        if (field === 'estimatedTime') {
+            const textEl = document.getElementById('detailEstimatedTime');
+            const inputEl = document.getElementById('editEstimatedTime');
+            const value = inputEl.value;
+            textEl.textContent = value ? `${value} ч` : 'Не указано';
+            textEl.style.display = 'block';
+            inputEl.style.display = 'none';
+            return;
+        } else if (field === 'assignee') {
+            const value = inputElement.value;
+            textElement.textContent = value || 'Не назначен';
+        } else if (field === 'deadline') {
+            const value = inputElement.value;
+            textElement.textContent = this.formatDate(value);
+        } else if (field === 'description') {
+            const value = inputElement.value;
+            if (value && value.trim()) {
+                textElement.innerHTML = this.escapeHtml(value).replace(/\n/g, '<br>');
+            } else {
+                textElement.innerHTML = '<p class="text-light">Описание отсутствует</p>';
+            }
+        } else {
+            const value = inputElement.value;
+            textElement.textContent = value || '-';
+        }
+        
+        textElement.style.display = 'block';
+        inputElement.style.display = 'none';
+    },
+    
+    // Отменить редактирование поля
+    cancelEdit(field) {
+        const inputElement = document.getElementById(`edit${field.charAt(0).toUpperCase() + field.slice(1)}`);
+        
+        // Восстанавливаем оригинальное значение
+        switch (field) {
+            case 'title':
+                inputElement.value = this.originalTaskData.title;
+                break;
+            case 'description':
+                inputElement.value = this.originalTaskData.description;
+                break;
+            case 'deadline':
+                inputElement.value = this.originalTaskData.deadline;
+                break;
+            case 'estimatedTime':
+                inputElement.value = this.originalTaskData.estimated_time;
+                break;
+            case 'assignee':
+                inputElement.value = this.originalTaskData.assignee_username;
+                break;
+        }
+        
+        this.endEdit(field);
+        this.checkForChanges();
+    },
+    
+    // Проверка изменений для показа кнопки сохранения
+    checkForChanges() {
+        if (!this.originalTaskData) {
+            return;
+        }
+        
+        const currentValues = {
+            title: document.getElementById('editTitle').value,
+            description: document.getElementById('editDescription').value,
+            deadline: document.getElementById('editDeadline').value,
+            estimated_time: document.getElementById('editEstimatedTime').value,
+            assignee_username: document.getElementById('editAssignee').value
+        };
+        
+        const hasChanges = 
+            currentValues.title !== this.originalTaskData.title ||
+            currentValues.description !== this.originalTaskData.description ||
+            currentValues.deadline !== this.originalTaskData.deadline ||
+            currentValues.estimated_time !== this.originalTaskData.estimated_time ||
+            currentValues.assignee_username !== this.originalTaskData.assignee_username;
+        
+        const saveButton = document.getElementById('saveTaskChanges');
+        if (saveButton) {
+            saveButton.style.display = hasChanges ? 'inline-block' : 'none';
+        }
+    },
+    
+    // Сохранение изменений задачи
+    async saveTaskChanges() {
+        if (!this.currentTaskId) return;
+        
+        try {
+            const taskData = {
+                title: document.getElementById('editTitle').value,
+                description: document.getElementById('editDescription').value,
+                deadline: document.getElementById('editDeadline').value,
+                estimated_time: document.getElementById('editEstimatedTime').value || 0,
+                assignee: document.getElementById('editAssignee').value
+            };
+            
+            await TasksAPI.update(this.currentTaskId, taskData);
+            this.showNotification('Задача обновлена. Уведомление отправлено в Telegram.', 'success');
+            
+            // Обновляем оригинальные данные
+            this.originalTaskData = {
+                title: taskData.title,
+                description: taskData.description,
+                deadline: taskData.deadline,
+                estimated_time: taskData.estimated_time,
+                assignee_username: document.getElementById('editAssignee').value
+            };
+            
+            // Скрываем кнопку сохранения
+            document.getElementById('saveTaskChanges').style.display = 'none';
+            
+            // Перезагружаем задачи и историю
+            this.loadTasks();
+            await this.loadTaskHistory(this.currentTaskId);
+            
+        } catch (error) {
+            console.error('Ошибка сохранения изменений:', error);
+            this.showNotification('Ошибка сохранения изменений', 'error');
+        }
+    },
+
+    // Загрузка истории изменений задачи
+    async loadTaskHistory(taskId) {
+        try {
+            const history = await TasksAPI.getHistory(taskId);
+            this.displayTaskHistory(history);
+        } catch (error) {
+            console.error('Ошибка загрузки истории:', error);
+            // Показываем заглушку при ошибке
+            this.displayTaskHistory([]);
+        }
+    },
+
+    // Отображение истории изменений
+    displayTaskHistory(history) {
+        const historySection = document.getElementById('detailHistorySection');
+        const historyElement = document.getElementById('detailHistory');
+        
+        historySection.style.display = 'block';
+        
+        if (history.length === 0) {
+            historyElement.innerHTML = `
+                <div class="history-item">
+                    <div class="history-date">${new Date().toLocaleDateString('ru-RU')}</div>
+                    <div class="history-change">Задача создана</div>
+                </div>
+                <p class="text-light mt-3">История изменений пуста</p>
+            `;
+            return;
+        }
+
+        const historyHTML = history.map(item => {
+            const fieldNames = {
+                'title': 'Название',
+                'description': 'Описание', 
+                'deadline': 'Дедлайн',
+                'assignee_username': 'Исполнитель'
+            };
+            
+            const fieldName = fieldNames[item.field_name] || item.field_name;
+            const userName = item.first_name || item.username || 'Система';
+            const changeDate = new Date(item.changed_at).toLocaleString('ru-RU');
+            
+            let changeText = `${fieldName}: изменено`;
+            if (item.old_value && item.new_value) {
+                changeText = `${fieldName}: "${item.old_value}" → "${item.new_value}"`;
+            } else if (item.new_value) {
+                changeText = `${fieldName}: установлено "${item.new_value}"`;
+            } else if (item.old_value) {
+                changeText = `${fieldName}: удалено "${item.old_value}"`;
+            }
+
+            return `
+                <div class="history-item">
+                    <div class="history-date">${changeDate}</div>
+                    <div class="history-change">${changeText}</div>
+                    <div class="history-user">Изменил: ${userName}</div>
+                </div>
+            `;
+        }).join('');
+
+        historyElement.innerHTML = historyHTML;
     }
 };

@@ -58,6 +58,19 @@ db.serialize(() => {
     db.run(`ALTER TABLE tasks ADD COLUMN reviewed_by_user_id TEXT NULL`, () => {});
     db.run(`ALTER TABLE tasks ADD COLUMN review_comment TEXT NULL`, () => {});
     db.run(`ALTER TABLE tasks ADD COLUMN submitted_for_review_at DATETIME NULL`, () => {});
+
+    // Создаем таблицу истории изменений задач
+    db.run(`CREATE TABLE IF NOT EXISTS task_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        task_id INTEGER NOT NULL,
+        field_name TEXT NOT NULL,
+        old_value TEXT,
+        new_value TEXT,
+        changed_by_user_id TEXT,
+        changed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (task_id) REFERENCES tasks(id),
+        FOREIGN KEY (changed_by_user_id) REFERENCES users(user_id)
+    )`);
     db.run(`ALTER TABLE tasks ADD COLUMN rejection_reason TEXT NULL`, () => {});
     db.run(`ALTER TABLE tasks ADD COLUMN revision_count INTEGER DEFAULT 0`, () => {});
     db.run(`ALTER TABLE tasks ADD COLUMN started_at DATETIME NULL`, () => {});
@@ -158,14 +171,97 @@ function completeTask(taskId) {
     });
 }
 
-function updateTask(taskId, title, description, deadline) {
+function updateTask(taskId, title, description, deadline, assigneeUsername = null, changedByUserId = 'web_admin') {
+    return new Promise(async (resolve, reject) => {
+        try {
+            // Сначала получаем старые значения для истории
+            const oldTask = await new Promise((resolve, reject) => {
+                db.get('SELECT * FROM tasks WHERE id = ?', [taskId], (err, row) => {
+                    if (err) reject(err);
+                    else resolve(row);
+                });
+            });
+
+            if (!oldTask) {
+                reject(new Error('Task not found'));
+                return;
+            }
+
+            // Строим запрос и параметры в зависимости от того, нужно ли обновлять assignee
+            let query = 'UPDATE tasks SET title = ?, description = ?, deadline = ?';
+            let params = [title, description, deadline];
+            
+            if (assigneeUsername !== null) {
+                query += ', assignee_username = ?';
+                params.push(assigneeUsername);
+            }
+            
+            query += ' WHERE id = ?';
+            params.push(taskId);
+            
+            db.run(query, params, async function(err) {
+                if (err) {
+                    reject(err);
+                    return;
+                }
+
+                // Записываем историю изменений
+                const historyPromises = [];
+                
+                if (title !== oldTask.title) {
+                    historyPromises.push(addTaskHistory(taskId, 'title', oldTask.title, title, changedByUserId));
+                }
+                if (description !== oldTask.description) {
+                    historyPromises.push(addTaskHistory(taskId, 'description', oldTask.description, description, changedByUserId));
+                }
+                if (deadline !== oldTask.deadline) {
+                    historyPromises.push(addTaskHistory(taskId, 'deadline', oldTask.deadline, deadline, changedByUserId));
+                }
+                if (assigneeUsername !== null && assigneeUsername !== oldTask.assignee_username) {
+                    historyPromises.push(addTaskHistory(taskId, 'assignee_username', oldTask.assignee_username, assigneeUsername, changedByUserId));
+                }
+
+                try {
+                    await Promise.all(historyPromises);
+                    resolve(this.changes);
+                } catch (historyErr) {
+                    console.error('Error saving history:', historyErr);
+                    resolve(this.changes); // Не фейлим основную операцию из-за истории
+                }
+            });
+        } catch (err) {
+            reject(err);
+        }
+    });
+}
+
+// Функция для добавления записи в историю изменений
+function addTaskHistory(taskId, fieldName, oldValue, newValue, changedByUserId) {
     return new Promise((resolve, reject) => {
         db.run(
-            'UPDATE tasks SET title = ?, description = ?, deadline = ? WHERE id = ?',
-            [title, description, deadline, taskId],
+            'INSERT INTO task_history (task_id, field_name, old_value, new_value, changed_by_user_id) VALUES (?, ?, ?, ?, ?)',
+            [taskId, fieldName, oldValue || '', newValue || '', changedByUserId],
             function(err) {
                 if (err) reject(err);
-                else resolve(this.changes);
+                else resolve(this.lastID);
+            }
+        );
+    });
+}
+
+// Функция для получения истории изменений задачи
+function getTaskHistory(taskId) {
+    return new Promise((resolve, reject) => {
+        db.all(
+            `SELECT h.*, u.first_name, u.username 
+             FROM task_history h 
+             LEFT JOIN users u ON h.changed_by_user_id = u.user_id 
+             WHERE h.task_id = ? 
+             ORDER BY h.changed_at DESC`,
+            [taskId],
+            (err, rows) => {
+                if (err) reject(err);
+                else resolve(rows || []);
             }
         );
     });
@@ -602,5 +698,7 @@ module.exports = {
     getSetting,
     getAllSettings,
     findOrCreateGoogleUser,
-    findUserByGoogleId
+    findUserByGoogleId,
+    addTaskHistory,
+    getTaskHistory
 };
