@@ -106,7 +106,10 @@ const TasksAPI = {
             method: 'POST',
             body: JSON.stringify({ comment })
         });
-        if (!response.ok) throw new Error('Failed to approve task');
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+            throw new Error(errorData.error || 'Failed to approve task');
+        }
         return response.json();
     },
 
@@ -116,7 +119,10 @@ const TasksAPI = {
             method: 'POST',
             body: JSON.stringify({ comment })
         });
-        if (!response.ok) throw new Error('Failed to reject task');
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+            throw new Error(errorData.error || 'Failed to reject task');
+        }
         return response.json();
     }
 };

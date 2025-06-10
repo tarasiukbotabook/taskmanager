@@ -129,9 +129,11 @@ const server = http.createServer((req, res) => {
                         assignee,
                         deadline || null,
                         'web', // chatId для веб-интерфейса
-                        'web_admin', // createdByUserId для веб-интерфейса
-                        estimatedTime || 0
+                        'web_admin' // createdByUserId для веб-интерфейса
                     );
+                    
+                    // Отправляем уведомление о новой задаче
+                    await sendNewTaskNotification(taskId, db);
                     
                     res.writeHead(201, { 'Content-Type': 'application/json' });
                     res.end(JSON.stringify({ 
@@ -256,7 +258,10 @@ const server = http.createServer((req, res) => {
                     const { comment } = JSON.parse(body);
                     const result = await db.approveTask(taskId, 'web_admin', comment || '');
                     
-                    if (result > 0) {
+                    if (result && result.changes > 0) {
+                        // Отправляем уведомление в чат об одобрении
+                        await sendTaskApprovalNotification(taskId, db);
+                        
                         res.writeHead(200, { 'Content-Type': 'application/json' });
                         res.end(JSON.stringify({ success: true, message: 'Task approved' }));
                     } else {
@@ -292,6 +297,9 @@ const server = http.createServer((req, res) => {
                     const result = await db.requestRevision(taskId, 'web_admin', comment);
                     
                     if (result > 0) {
+                        // Отправляем уведомление в чат об отклонении
+                        await sendTaskRejectionNotification(taskId, comment, db);
+                        
                         res.writeHead(200, { 'Content-Type': 'application/json' });
                         res.end(JSON.stringify({ success: true, message: 'Task rejected for revision' }));
                     } else {
@@ -800,15 +808,13 @@ const server = http.createServer((req, res) => {
             (async () => {
                 try {
                     // Получаем токен бота и ID чата
-                    const botTokenSetting = await db.getSetting('bot_token');
-                    let botToken = botTokenSetting ? botTokenSetting.value : null;
+                    let botToken = await db.getSetting('bot_token');
                     
                     if (!botToken) {
                         botToken = process.env.BOT_TOKEN;
                     }
                     
-                    const workChatSetting = await db.getSetting('work_chat_id');
-                    const workChatId = workChatSetting ? workChatSetting.value : null;
+                    const workChatId = await db.getSetting('work_chat_id');
                     
                     if (!botToken || !workChatId) {
                         res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -978,7 +984,7 @@ async function handleUpdate(update, botToken, db) {
     
     if (update.message && update.message.text) {
         const message = update.message;
-        console.log(`💬 Message from ${message.from.first_name} in chat ${message.chat.id}: ${message.text}`);
+        console.log(`💬 Message from ${message.from.first_name} (@${message.from.username || 'no_username'}) in chat ${message.chat.id} (${message.chat.title || 'no_title'}): ${message.text}`);
         
         // Обрабатываем команду /start
         if (message.text === '/start') {
@@ -994,6 +1000,21 @@ async function handleUpdate(update, botToken, db) {
         else if (message.text === '/tasks') {
             console.log('📝 Handling /tasks command');
             await handleTasksCommand(message, botToken, db);
+        }
+        // Добавим команду для отладки чата
+        else if (message.text === '/chatinfo') {
+            console.log('🔍 Handling /chatinfo command');
+            const workChatId = await db.getSetting('work_chat_id');
+            await sendMessage(botToken, message.chat.id, `Информация о чате:
+            
+Текущий чат ID: ${message.chat.id}
+Текущий чат ID (строка): "${message.chat.id.toString()}"
+Рабочий чат ID: ${workChatId}
+Рабочий чат ID (строка): "${workChatId ? workChatId.toString() : 'null'}"
+Совпадают ли: ${workChatId && workChatId.toString() === message.chat.id.toString()}
+
+Название чата: ${message.chat.title || 'Без названия'}
+Тип чата: ${message.chat.type}`);
         }
         else {
             console.log(`❓ Unknown command: ${message.text}`);
@@ -1154,19 +1175,28 @@ async function handleApproveTask(callbackQuery, taskId, botToken, db) {
                           currentUser.role === 'manager' || 
                           task.created_by_user_id === userId;
         
+        console.log(`Approve check: userId=${userId}, currentUser.role=${currentUser.role}, task.created_by_user_id=${task.created_by_user_id}, canApprove=${canApprove}`);
+        
         if (!canApprove) {
             await answerCallbackQuery(botToken, callbackQuery.id, '❌ Недостаточно прав для принятия задач');
             return;
         }
         
         // Обновляем статус задачи
-        await db.approveTask(taskId, userId, '');
+        const result = await db.approveTask(taskId, userId, '');
         
-        // Обновляем сообщение
-        const newText = callbackQuery.message.text.replace(/🔍 Задача на проверке:|📋 Задача:/, '✅ Задача выполнена:');
-        
-        await editMessage(botToken, chatId, messageId, newText, null);
-        await answerCallbackQuery(botToken, callbackQuery.id, '✅ Задача принята!');
+        if (result && result.changes > 0) {
+            // Отправляем уведомление об одобрении
+            await sendTaskApprovalNotification(taskId, db);
+            
+            // Обновляем сообщение
+            const newText = callbackQuery.message.text.replace(/🔍 Задача на проверке:|📋 Задача:/, '✅ Задача выполнена:');
+            
+            await editMessage(botToken, chatId, messageId, newText, null);
+            await answerCallbackQuery(botToken, callbackQuery.id, '✅ Задача принята!');
+        } else {
+            await answerCallbackQuery(botToken, callbackQuery.id, '❌ Задача не найдена или уже обработана');
+        }
         
     } catch (error) {
         console.error('Error handling approve task:', error);
@@ -1185,7 +1215,23 @@ async function handleRejectTask(callbackQuery, taskId, botToken, db) {
         const users = await db.getAllUsersWithRoles();
         const currentUser = users.find(u => u.user_id === userId);
         
-        if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'manager')) {
+        // Получаем задачу для проверки создателя
+        const tasks = await db.getAllTasks({ chatId: chatId.toString() });
+        const task = tasks.find(t => t.id == taskId);
+        
+        if (!currentUser || !task) {
+            await answerCallbackQuery(botToken, callbackQuery.id, '❌ Задача не найдена или пользователь не найден');
+            return;
+        }
+        
+        // Разрешаем отклонять задачи: админам, менеджерам и создателям задач
+        const canReject = currentUser.role === 'admin' || 
+                         currentUser.role === 'manager' || 
+                         task.created_by_user_id === userId;
+        
+        console.log(`Reject check: userId=${userId}, currentUser.role=${currentUser.role}, task.created_by_user_id=${task.created_by_user_id}, canReject=${canReject}`);
+        
+        if (!canReject) {
             await answerCallbackQuery(botToken, callbackQuery.id, '❌ Недостаточно прав для отклонения задач');
             return;
         }
@@ -1273,8 +1319,14 @@ async function handleTaskCommand(message, botToken, db) {
         
         // Проверяем, что это рабочий чат
         const workChatId = await db.getSetting('work_chat_id');
-        if (!workChatId || workChatId !== chatId) {
-            await sendMessage(botToken, chatId, '❌ Команды задач доступны только в рабочем чате.');
+        console.log(`Task command in chat ${chatId}, work chat is ${workChatId}`);
+        
+        if (!workChatId || workChatId.toString() !== chatId.toString()) {
+            console.log(`Command rejected: not in work chat. Current: ${chatId}, Work: ${workChatId}`);
+            await sendMessage(botToken, chatId, `❌ Команды задач доступны только в рабочем чате.
+            
+Текущий чат: ${chatId}
+Рабочий чат: ${workChatId || 'не настроен'}`);
             return;
         }
         
@@ -1363,8 +1415,14 @@ async function handleTasksCommand(message, botToken, db) {
         
         // Проверяем, что это рабочий чат
         const workChatId = await db.getSetting('work_chat_id');
-        if (!workChatId || workChatId !== chatId) {
-            await sendMessage(botToken, chatId, '❌ Команды задач доступны только в рабочем чате.');
+        console.log(`Tasks command in chat ${chatId}, work chat is ${workChatId}`);
+        
+        if (!workChatId || workChatId.toString() !== chatId.toString()) {
+            console.log(`Tasks command rejected: not in work chat. Current: ${chatId}, Work: ${workChatId}`);
+            await sendMessage(botToken, chatId, `❌ Команды задач доступны только в рабочем чате.
+            
+Текущий чат: ${chatId}
+Рабочий чат: ${workChatId || 'не настроен'}`);
             return;
         }
         
@@ -1584,6 +1642,132 @@ async function sendMessageWithButtons(botToken, chatId, text, taskId, assigneeUs
         req.write(postData);
         req.end();
     });
+}
+
+// Функция отправки уведомления о новой задаче
+async function sendNewTaskNotification(taskId, db) {
+    try {
+        // Получаем информацию о задаче
+        const tasks = await db.getAllTasks();
+        const task = tasks.find(t => t.id == taskId);
+        
+        if (!task) {
+            console.log('Task not found for new task notification');
+            return;
+        }
+
+        // Получаем настройки для отправки уведомлений
+        const botToken = await db.getSetting('bot_token') || process.env.BOT_TOKEN;
+        const workChatId = await db.getSetting('work_chat_id');
+        
+        if (!botToken || !workChatId) {
+            console.log('Bot token or work chat not configured');
+            return;
+        }
+
+        // Формируем сообщение
+        const message = `📋 Новая задача назначена!
+
+📝 Задача: ${task.title}
+👤 Исполнитель: ${task.assignee_username}
+${task.description ? `📄 Описание: ${task.description}` : ''}
+${task.deadline ? `📅 Дедлайн: ${task.deadline}` : ''}
+
+✨ Удачи в выполнении!
+
+ID: #${task.id}`;
+
+        // Отправляем уведомление в рабочий чат
+        await sendMessage(botToken, workChatId, message);
+        console.log(`New task notification sent for task ${taskId}`);
+        
+    } catch (error) {
+        console.error('Error sending new task notification:', error);
+    }
+}
+
+// Функция отправки уведомления об одобрении задачи
+async function sendTaskApprovalNotification(taskId, db) {
+    try {
+        // Получаем информацию о задаче
+        const tasks = await db.getAllTasks();
+        const task = tasks.find(t => t.id == taskId);
+        
+        if (!task) {
+            console.log('Task not found for approval notification');
+            return;
+        }
+
+        // Получаем настройки для отправки уведомлений
+        const botToken = await db.getSetting('bot_token') || process.env.BOT_TOKEN;
+        const workChatId = await db.getSetting('work_chat_id');
+        
+        if (!botToken || !workChatId) {
+            console.log('Bot token or work chat not configured');
+            return;
+        }
+
+        // Формируем сообщение
+        const message = `🎉 Задача одобрена!
+
+📋 Задача: ${task.title}
+👤 Исполнитель: ${task.assignee_username}
+✅ Статус: Выполнена
+
+🏆 Молодец! Тебе плюс балл за качественно выполненную работу!
+
+ID: #${task.id}`;
+
+        // Отправляем уведомление в рабочий чат
+        await sendMessage(botToken, workChatId, message);
+        console.log(`Approval notification sent for task ${taskId}`);
+        
+    } catch (error) {
+        console.error('Error sending approval notification:', error);
+    }
+}
+
+// Функция отправки уведомления об отклонении задачи
+async function sendTaskRejectionNotification(taskId, reason, db) {
+    try {
+        // Получаем информацию о задаче
+        const tasks = await db.getAllTasks();
+        const task = tasks.find(t => t.id == taskId);
+        
+        if (!task) {
+            console.log('Task not found for rejection notification');
+            return;
+        }
+
+        // Получаем настройки для отправки уведомлений
+        const botToken = await db.getSetting('bot_token') || process.env.BOT_TOKEN;
+        const workChatId = await db.getSetting('work_chat_id');
+        
+        if (!botToken || !workChatId) {
+            console.log('Bot token or work chat not configured');
+            return;
+        }
+
+        // Формируем сообщение
+        const message = `❌ Задача отклонена на доработку
+
+📋 Задача: ${task.title}
+👤 Исполнитель: ${task.assignee_username}
+🔄 Статус: На доработке
+
+💬 Причина отклонения: ${reason}
+
+⚠️ Пожалуйста, внесите необходимые исправления и отправьте задачу на проверку снова.
+
+ID: #${task.id}`;
+
+        // Отправляем уведомление в рабочий чат
+        await sendMessage(botToken, workChatId, message);
+        console.log(`Rejection notification sent for task ${taskId}`);
+        
+    } catch (error) {
+        console.error('Error sending rejection notification:', error);
+    }
 }
 
 server.listen(PORT, '127.0.0.1', () => {

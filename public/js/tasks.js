@@ -83,7 +83,7 @@ const TasksModule = {
                 </div>
                 
                 <div class="task-meta">
-                    <span>Исполнитель: ${this.escapeHtml(task.assignee || 'Не назначен')}</span>
+                    <span>Исполнитель: ${this.escapeHtml(task.assignee_username || 'Не назначен')}</span>
                     <span>Дедлайн: ${this.formatDate(task.deadline)}</span>
                     ${task.estimated_time ? `<span>Время: ${task.estimated_time} ч</span>` : ''}
                 </div>
@@ -159,25 +159,49 @@ const TasksModule = {
     },
     
     // Открытие модального окна создания задачи
-    openCreateModal() {
+    async openCreateModal() {
         this.resetTaskForm();
+        await this.loadUsersForSelect();
         this.showModal('taskModal');
     },
     
     // Открытие модального окна редактирования
-    editTask(taskId) {
+    async editTask(taskId) {
         const task = this.tasks.find(t => t.id === taskId);
         if (!task) return;
         
+        await this.loadUsersForSelect();
         this.fillTaskForm(task);
         this.showModal('taskModal');
+    },
+    
+    // Загрузка пользователей для выбора исполнителя
+    async loadUsersForSelect() {
+        try {
+            const users = await UsersAPI.getAll();
+            const select = document.getElementById('taskAssignee');
+            
+            // Очищаем select
+            select.innerHTML = '<option value="">Выберите исполнителя...</option>';
+            
+            // Добавляем пользователей
+            users.forEach(user => {
+                const option = document.createElement('option');
+                const username = user.username ? `@${user.username.replace('@', '')}` : user.first_name;
+                option.value = username;
+                option.textContent = `${user.first_name || 'Без имени'} (${username})`;
+                select.appendChild(option);
+            });
+        } catch (error) {
+            console.error('Ошибка загрузки пользователей:', error);
+        }
     },
     
     // Заполнение формы данными задачи
     fillTaskForm(task) {
         document.getElementById('taskTitle').value = task.title || '';
         document.getElementById('taskDescription').value = task.description || '';
-        document.getElementById('taskAssignee').value = task.assignee || '';
+        document.getElementById('taskAssignee').value = task.assignee_username || '';
         document.getElementById('taskDeadline').value = task.deadline || '';
         document.getElementById('taskEstimatedTime').value = task.estimated_time || '';
         document.getElementById('taskId').value = task.id || '';
@@ -209,8 +233,8 @@ const TasksModule = {
                 await TasksAPI.update(taskId, taskData);
                 this.showNotification('Задача обновлена', 'success');
             } else {
-                await TasksAPI.create(taskData);
-                this.showNotification('Задача создана', 'success');
+                const result = await TasksAPI.create(taskData);
+                this.showNotification('Задача создана. Уведомление отправлено исполнителю.', 'success');
             }
             
             this.hideModal('taskModal');
@@ -223,7 +247,14 @@ const TasksModule = {
     
     // Завершение задачи
     async completeTask(taskId) {
-        if (!confirm('Завершить задачу?')) return;
+        const confirmed = await ModalHelper.confirm(
+            'Завершить задачу',
+            'Вы уверены, что хотите завершить эту задачу?',
+            'Завершить',
+            'Отмена'
+        );
+        
+        if (!confirmed) return;
         
         try {
             await TasksAPI.complete(taskId);
@@ -237,7 +268,14 @@ const TasksModule = {
     
     // Удаление задачи
     async deleteTask(taskId) {
-        if (!confirm('Удалить задачу?')) return;
+        const confirmed = await ModalHelper.confirm(
+            'Удалить задачу',
+            'Вы уверены, что хотите удалить эту задачу? Это действие нельзя отменить.',
+            'Удалить',
+            'Отмена'
+        );
+        
+        if (!confirmed) return;
         
         try {
             await TasksAPI.delete(taskId);
@@ -263,30 +301,43 @@ const TasksModule = {
     
     // Одобрение задачи
     async approveTask(taskId) {
-        const comment = prompt('Комментарий к одобрению (необязательно):');
+        const comment = await ModalHelper.prompt(
+            'Одобрить задачу',
+            'Комментарий к одобрению (необязательно):',
+            'Отличная работа!',
+            false
+        );
+        
+        if (comment === null) return; // Пользователь отменил
         
         try {
             await TasksAPI.approve(taskId, comment || '');
-            this.showNotification('Задача одобрена', 'success');
+            this.showNotification('Задача одобрена! Уведомление отправлено в чат.', 'success');
             this.loadTasks();
         } catch (error) {
             console.error('Ошибка одобрения задачи:', error);
-            this.showNotification('Ошибка одобрения задачи', 'error');
+            this.showNotification('Ошибка одобрения задачи: ' + error.message, 'error');
         }
     },
     
     // Отклонение задачи
     async rejectTask(taskId) {
-        const comment = prompt('Комментарий к отклонению (обязательно):');
-        if (!comment) return;
+        const comment = await ModalHelper.prompt(
+            'Отклонить задачу',
+            'Укажите причину отклонения (обязательно):',
+            'Требуется доработка...',
+            true
+        );
+        
+        if (!comment) return; // Пользователь отменил или не ввел комментарий
         
         try {
             await TasksAPI.reject(taskId, comment);
-            this.showNotification('Задача отклонена', 'success');
+            this.showNotification('Задача отклонена. Уведомление отправлено в чат.', 'success');
             this.loadTasks();
         } catch (error) {
             console.error('Ошибка отклонения задачи:', error);
-            this.showNotification('Ошибка отклонения задачи', 'error');
+            this.showNotification('Ошибка отклонения задачи: ' + error.message, 'error');
         }
     },
     
@@ -369,22 +420,15 @@ const TasksModule = {
     
     // UI утилиты
     showModal(modalId) {
-        const modal = document.getElementById(modalId);
-        if (modal) {
-            modal.classList.add('show');
-        }
+        ModalHelper.showModal(modalId);
     },
     
     hideModal(modalId) {
-        const modal = document.getElementById(modalId);
-        if (modal) {
-            modal.classList.remove('show');
-        }
+        ModalHelper.hideModal(modalId);
     },
     
     showNotification(message, type = 'info') {
-        // Простая реализация уведомлений
-        alert(message);
-        // TODO: Заменить на красивые уведомления
+        // Используем красивые уведомления
+        NotificationHelper.show(message, type);
     }
 };

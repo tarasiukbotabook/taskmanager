@@ -7,6 +7,8 @@
     
     --secondary-color: #f8faf9;
     --text-color: #2d3748;
+    --text-primary: #1a202c;
+    --text-secondary: #718096;
     --text-light: #718096;
     --text-dark: #1a202c;
     
@@ -16,11 +18,14 @@
     --success-color: #48bb78;
     --warning-color: #ed8936;
     --error-color: #f56565;
+    --danger-color: #f56565;
     --info-color: #4299e1;
     
     --background-color: #f8faf9;
     --card-background: #ffffff;
     --sidebar-background: #ffffff;
+    --surface-color: #ffffff;
+    --hover-color: #f7fafc;
     
     /* Размеры */
     --sidebar-width: 260px;
